@@ -1,6 +1,6 @@
 # `@ramarivera/pi-ts-aperture-provider`
 
-Reusable aperture-provider logic extracted from a Pi extension so different users can share the same codebase while keeping instance-specific details in config.
+Shared Aperture provider logic for Pi extensions, extracted so different users can reuse the same extension core while keeping instance-specific details in config.
 
 ## What lives here
 
@@ -42,48 +42,38 @@ This runtime no longer guesses capabilities from model IDs. It reads:
 
 If models.dev does not know a model and you do not provide an override, registration fails with a concrete missing-field error instead of inventing values.
 
-## Core usage
+## Pi extension usage
+
+The intended use is from a Pi extension entrypoint:
 
 ```ts
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   createApertureProviderRuntime,
   loadApertureProviderConfig,
 } from "@ramarivera/pi-ts-aperture-provider";
 
-const config = await loadApertureProviderConfig(new URL("./aperture-provider.config.json", import.meta.url));
-const runtime = createApertureProviderRuntime(config);
-
-await runtime.sync({
-  registerProvider(name, registration) {
-    console.log(name, registration.models.length);
-  },
-});
-```
-
-## Pi integration sketch
-
-The repo intentionally keeps the core Pi-agnostic. A thin local Pi extension can wrap it later:
-
-```ts
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import {
-  createApertureProviderRuntime,
-  loadApertureProviderConfig,
-} from "@ramarivera/pi-ts-aperture-provider";
-
-const configPromise = loadApertureProviderConfig(new URL("./aperture-provider.config.json", import.meta.url));
+const configPromise = loadApertureProviderConfig(
+  new URL("./aperture-provider.config.json", import.meta.url)
+);
 
 export default function (pi: ExtensionAPI) {
-  void configPromise.then((config) => {
-    const runtime = createApertureProviderRuntime(config);
-    return runtime.sync({
-      registerProvider(name, registration) {
-        pi.registerProvider(name, registration as never);
-      },
-    } as never);
-  }).catch(() => {});
+  void configPromise
+    .then((config) => {
+      const runtime = createApertureProviderRuntime(config);
+      return runtime.sync({
+        registerProvider(name, registration) {
+          pi.registerProvider(name, registration as never);
+        },
+      } as never);
+    })
+    .catch((error) => {
+      console.error("failed to sync aperture provider", error);
+    });
 }
 ```
+
+That is the point of the package: keep the Aperture/provider-resolution logic shared, while the actual provider registration still happens inside Pi.
 
 ## Repository layout
 
