@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
 	createApertureProviderRuntime,
+	defaultApertureProviderConfigSearchPaths,
 	defineApertureProviderConfig,
 	enrichApertureModelMetadata,
+	loadResolvedApertureProviderConfig,
+	resolveApertureProviderConfigPath,
 } from "../src/index";
 
 test("runtime resolves api type from provider metadata and models.dev", async () => {
@@ -400,5 +406,112 @@ test("runtime fails when capabilities are missing and no override exists", async
 		);
 	} finally {
 		globalThis.fetch = originalFetch;
+	}
+});
+
+test("resolved config search path order is env, project, user, then package", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pi-ts-aperture-provider-"));
+	const projectDir = join(root, "workspace");
+	const userHome = join(root, "home");
+	const packageRoot = join(root, "package");
+	const envConfig = join(root, "env-config.json");
+	const projectConfig = join(projectDir, ".pi", "aperture-provider.config.json");
+	const userConfig = join(userHome, ".pi", "agent", "aperture-provider.config.json");
+	const packageConfig = join(packageRoot, "aperture-provider.config.json");
+	const originalEnvConfig = process.env.PI_APERTURE_PROVIDER_CONFIG;
+	const originalHome = process.env.HOME;
+
+	process.env.HOME = userHome;
+	process.env.PI_APERTURE_PROVIDER_CONFIG = envConfig;
+
+	try {
+		await mkdir(join(projectDir, ".pi"), { recursive: true });
+		await mkdir(join(userHome, ".pi", "agent"), { recursive: true });
+		await mkdir(packageRoot, { recursive: true });
+		await writeFile(
+			envConfig,
+			JSON.stringify({ providerName: "env", baseUrl: "https://env.example/v1" })
+		);
+		await writeFile(
+			projectConfig,
+			JSON.stringify({ providerName: "project", baseUrl: "https://project.example/v1" })
+		);
+		await writeFile(
+			userConfig,
+			JSON.stringify({ providerName: "user", baseUrl: "https://user.example/v1" })
+		);
+		await writeFile(
+			packageConfig,
+			JSON.stringify({ providerName: "package", baseUrl: "https://package.example/v1" })
+		);
+
+		assert.deepEqual(defaultApertureProviderConfigSearchPaths({ cwd: projectDir, packageRoot }), [
+			envConfig,
+			projectConfig,
+			userConfig,
+			packageConfig,
+		]);
+		assert.equal(
+			await resolveApertureProviderConfigPath({ cwd: projectDir, packageRoot }),
+			envConfig
+		);
+
+		process.env.PI_APERTURE_PROVIDER_CONFIG = undefined;
+		assert.equal(
+			await resolveApertureProviderConfigPath({ cwd: projectDir, packageRoot }),
+			projectConfig
+		);
+
+		await rm(projectConfig, { force: true });
+		assert.equal(
+			await resolveApertureProviderConfigPath({ cwd: projectDir, packageRoot }),
+			userConfig
+		);
+
+		await rm(userConfig, { force: true });
+		assert.equal(
+			await resolveApertureProviderConfigPath({ cwd: projectDir, packageRoot }),
+			packageConfig
+		);
+	} finally {
+		if (originalEnvConfig === undefined) {
+			delete process.env.PI_APERTURE_PROVIDER_CONFIG;
+		} else {
+			process.env.PI_APERTURE_PROVIDER_CONFIG = originalEnvConfig;
+		}
+		if (originalHome === undefined) {
+			delete process.env.HOME;
+		} else {
+			process.env.HOME = originalHome;
+		}
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("loadResolvedApertureProviderConfig returns parsed config and source path", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pi-ts-aperture-provider-load-"));
+	const projectDir = join(root, "workspace");
+	const packageRoot = join(root, "package");
+	const projectConfig = join(projectDir, ".pi", "aperture-provider.config.json");
+
+	try {
+		await mkdir(join(projectDir, ".pi"), { recursive: true });
+		await mkdir(packageRoot, { recursive: true });
+		await writeFile(
+			projectConfig,
+			JSON.stringify({ providerName: "project-aperture", baseUrl: "https://project.example/v1" })
+		);
+
+		const resolved = await loadResolvedApertureProviderConfig({
+			cwd: projectDir,
+			packageRoot,
+			env: {},
+		});
+
+		assert.equal(resolved.path, projectConfig);
+		assert.equal(resolved.config.providerName, "project-aperture");
+		assert.equal(resolved.config.baseUrl, "https://project.example/v1");
+	} finally {
+		await rm(root, { recursive: true, force: true });
 	}
 });

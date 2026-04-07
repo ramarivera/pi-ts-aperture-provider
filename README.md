@@ -1,19 +1,23 @@
 # `@ramarivera/pi-ts-aperture-provider`
 
-Shared Aperture provider logic for Pi extensions, extracted so different users can reuse the same extension core while keeping instance-specific details in config.
+Shared Aperture provider runtime for Pi, published as both:
+
+- a reusable TypeScript runtime library
+- a Pi package with a bundled extension entrypoint in `extensions/index.ts`
 
 ## What lives here
 
 - OpenAI-compatible `/models` gateway fetching
 - models.dev catalog indexing and metadata enrichment
 - provider-metadata-driven API resolution for Pi-style provider registrations
-- Config-driven overrides for provider aliases and individual models
+- config-driven overrides for provider aliases and individual models
+- a packaged Pi extension that registers the provider directly inside Pi
 
 ## What does not live here
 
-- Hardcoded Aperture base URLs
-- Hardcoded provider names
-- Canonical Pi extension wiring inside `~/.pi/...`
+- hardcoded Aperture base URLs
+- hardcoded provider names
+- heuristic capability inference from model IDs
 
 ## Quick start
 
@@ -23,7 +27,33 @@ corepack yarn test
 corepack yarn build
 ```
 
-Copy [`aperture-provider.config.example.json`](/Users/ramarivera/dev/pi-ts-aperture-provider/aperture-provider.config.example.json) to your own config file and adjust:
+## Install as a Pi package
+
+This package is now Pi-installable.
+
+```bash
+pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.0
+```
+
+Pi discovers the packaged extension from `package.json -> pi.extensions` and loads `extensions/index.ts` automatically.
+
+## Configuration
+
+Copy [`aperture-provider.config.example.json`](./aperture-provider.config.example.json) to one of these locations:
+
+1. `PI_APERTURE_PROVIDER_CONFIG=/absolute/path/to/file.json`
+2. `<project>/.pi/aperture-provider.config.json`
+3. `~/.pi/agent/aperture-provider.config.json`
+4. package-local `aperture-provider.config.json` next to the installed package (mainly useful for local development)
+
+Example:
+
+```bash
+mkdir -p ~/.pi/agent
+cp aperture-provider.config.example.json ~/.pi/agent/aperture-provider.config.json
+```
+
+Adjust at least:
 
 - `providerName`
 - `baseUrl`
@@ -32,59 +62,50 @@ Copy [`aperture-provider.config.example.json`](/Users/ramarivera/dev/pi-ts-apert
 - `resolution.apiRules`
 - `modelOverrides`
 
-For Aperture, `baseUrl` should be the primary gateway root the extension uses everywhere, either via the fully qualified tailnet hostname or the MagicDNS name your setup exposes. In your current setup that means `https://aperture-ai.xalda-procyon.ts.net/v1`, and the models fetch resolves from that via `modelsPath`.
+For Aperture, `baseUrl` should be the primary gateway root the extension uses everywhere. In Ramiro's current setup that is:
 
-This runtime no longer guesses capabilities from model IDs. It reads:
+```json
+{
+  "baseUrl": "https://aperture-ai.xalda-procyon.ts.net/v1"
+}
+```
+
+## Runtime behavior
+
+This runtime does not guess capabilities from model IDs. It reads:
 
 - API type from Aperture provider metadata such as `/v1/messages`, `/v1/responses`, or `/v1/chat/completions`
+- provider compatibility from `/aperture/config` when available
 - pricing from the Aperture `/models` payload when present
 - reasoning, modalities, and token limits from models.dev or explicit `modelOverrides`
 
 If models.dev does not know a model and you do not provide an override, registration fails with a concrete missing-field error instead of inventing values.
 
-## Pi extension usage
+## Using the library directly
 
-The intended use is from a Pi extension entrypoint:
+If you want your own custom Pi extension or another integration layer, use the runtime exports directly:
 
 ```ts
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   createApertureProviderRuntime,
-  loadApertureProviderConfig,
+  loadResolvedApertureProviderConfig,
 } from "@ramarivera/pi-ts-aperture-provider";
 
-const configPromise = loadApertureProviderConfig(
-  new URL("./aperture-provider.config.json", import.meta.url)
-);
-
-export default function (pi: ExtensionAPI) {
-  void configPromise
-    .then((config) => {
-      const runtime = createApertureProviderRuntime(config);
-      return runtime.sync({
-        registerProvider(name, registration) {
-          pi.registerProvider(name, registration as never);
-        },
-      } as never);
-    })
-    .catch((error) => {
-      console.error("failed to sync aperture provider", error);
-    });
-}
+const { config } = await loadResolvedApertureProviderConfig();
+const runtime = createApertureProviderRuntime(config);
 ```
-
-That is the point of the package: keep the Aperture/provider-resolution logic shared, while the actual provider registration still happens inside Pi.
 
 ## Repository layout
 
-- [`src/config.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/config.ts)
-- [`src/models-dev.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/models-dev.ts)
-- [`src/provider.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/provider.ts)
-- [`test/provider.test.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/test/provider.test.ts)
+- [`src/config.ts`](./src/config.ts)
+- [`src/models-dev.ts`](./src/models-dev.ts)
+- [`src/provider.ts`](./src/provider.ts)
+- [`extensions/index.ts`](./extensions/index.ts)
+- [`test/provider.test.ts`](./test/provider.test.ts)
 
 ## Publishing
 
-The package is configured to publish to the npm registry as `@ramarivera/pi-ts-aperture-provider`.
+The package is configured to publish to npm as `@ramarivera/pi-ts-aperture-provider`.
 
 Before publishing:
 
@@ -102,9 +123,3 @@ Publish with:
 ```bash
 npm publish
 ```
-
-`package.json` already sets:
-
-- `name: "@ramarivera/pi-ts-aperture-provider"`
-- `publishConfig.registry: "https://registry.npmjs.org/"`
-- `publishConfig.access: "public"`

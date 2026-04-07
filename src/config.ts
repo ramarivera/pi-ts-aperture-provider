@@ -1,6 +1,13 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { ApertureProviderConfig, ApertureProviderConfigInput, ModelOverride } from "./types";
+
+const CONFIG_FILE_NAME = "aperture-provider.config.json";
+const PROJECT_CONFIG_SUBPATH = `.pi/${CONFIG_FILE_NAME}`;
+const USER_CONFIG_SUBPATH = `.pi/agent/${CONFIG_FILE_NAME}`;
 
 export const DEFAULT_PROVIDER_ALIASES: Record<string, string[]> = {
 	alibaba: ["alibaba", "alibaba-coding-plan", "alibaba-coding-plan-cn", "alibaba-cn"],
@@ -120,4 +127,72 @@ export async function loadApertureProviderConfig(
 	const raw = await readFile(pathOrUrl, "utf8");
 	const parsed = JSON.parse(raw) as ApertureProviderConfigInput;
 	return defineApertureProviderConfig(parsed);
+}
+
+async function pathExists(path: string): Promise<boolean> {
+	try {
+		await access(path);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export function defaultApertureProviderConfigSearchPaths(options?: {
+	cwd?: string;
+	packageRoot?: string | URL;
+	env?: NodeJS.ProcessEnv;
+}): string[] {
+	const cwd = options?.cwd ?? process.cwd();
+	const env = options?.env ?? process.env;
+	const packageRoot = options?.packageRoot
+		? typeof options.packageRoot === "string"
+			? options.packageRoot
+			: dirname(fileURLToPath(options.packageRoot))
+		: undefined;
+
+	const candidates = [
+		env.PI_APERTURE_PROVIDER_CONFIG,
+		resolve(cwd, PROJECT_CONFIG_SUBPATH),
+		resolve(homedir(), USER_CONFIG_SUBPATH),
+		packageRoot ? resolve(packageRoot, CONFIG_FILE_NAME) : undefined,
+	].filter((value): value is string => typeof value === "string" && value !== "");
+
+	return [...new Set(candidates)];
+}
+
+export async function resolveApertureProviderConfigPath(options?: {
+	cwd?: string;
+	packageRoot?: string | URL;
+	env?: NodeJS.ProcessEnv;
+}): Promise<string | null> {
+	for (const candidate of defaultApertureProviderConfigSearchPaths(options)) {
+		if (await pathExists(candidate)) {
+			return candidate;
+		}
+	}
+
+	return null;
+}
+
+export async function loadResolvedApertureProviderConfig(options?: {
+	cwd?: string;
+	packageRoot?: string | URL;
+	env?: NodeJS.ProcessEnv;
+}): Promise<{ config: ApertureProviderConfig; path: string }> {
+	const resolvedPath = await resolveApertureProviderConfigPath(options);
+	if (!resolvedPath) {
+		throw new Error(
+			[
+				`No ${CONFIG_FILE_NAME} found.`,
+				"Looked in:",
+				...defaultApertureProviderConfigSearchPaths(options).map((path) => `- ${path}`),
+			].join("\n")
+		);
+	}
+
+	return {
+		config: await loadApertureProviderConfig(resolvedPath),
+		path: resolvedPath,
+	};
 }

@@ -1,8 +1,11 @@
 export {
 	DEFAULT_CONFIG,
 	DEFAULT_PROVIDER_ALIASES,
+	defaultApertureProviderConfigSearchPaths,
 	defineApertureProviderConfig,
 	loadApertureProviderConfig,
+	loadResolvedApertureProviderConfig,
+	resolveApertureProviderConfigPath,
 } from "./config";
 export { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev";
 export { createApertureProviderRuntime } from "./provider";
