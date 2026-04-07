@@ -41,14 +41,15 @@ export const DEFAULT_CONFIG: ApertureProviderConfig = {
 	modelOverrides: {},
 };
 
+function cloneRecordArrays(source: Record<string, string[]>): Record<string, string[]> {
+	return Object.fromEntries(Object.entries(source).map(([key, value]) => [key, [...value]]));
+}
+
 function mergeProviderAliases(
 	base: Record<string, string[]>,
 	incoming: Record<string, string[]> | undefined
 ): Record<string, string[]> {
-	const merged: Record<string, string[]> = {};
-	for (const [key, value] of Object.entries(base)) {
-		merged[key] = [...value];
-	}
+	const merged = cloneRecordArrays(base);
 	for (const [key, value] of Object.entries(incoming ?? {})) {
 		const existing = new Set(merged[key] ?? []);
 		for (const alias of value) existing.add(alias);
@@ -71,6 +72,32 @@ function mergeModelOverrides(
 	return merged;
 }
 
+function resolveModelsDevConfig(
+	input: ApertureProviderConfigInput["modelsDev"] | undefined
+): ApertureProviderConfig["modelsDev"] {
+	const defaults = DEFAULT_CONFIG.modelsDev;
+
+	return {
+		enabled: input?.enabled ?? defaults.enabled,
+		url: input?.url ?? defaults.url,
+		cacheTtlMs: input?.cacheTtlMs ?? defaults.cacheTtlMs,
+		providerAliases: mergeProviderAliases(defaults.providerAliases, input?.providerAliases),
+	};
+}
+
+function resolveResolutionConfig(
+	input: ApertureProviderConfigInput["resolution"] | undefined
+): ApertureProviderConfig["resolution"] {
+	const defaults = DEFAULT_CONFIG.resolution;
+
+	return {
+		requireModelsDevForCapabilities:
+			input?.requireModelsDevForCapabilities ?? defaults.requireModelsDevForCapabilities,
+		providerLabelInName: input?.providerLabelInName ?? defaults.providerLabelInName,
+		apiRules: input?.apiRules ?? defaults.apiRules,
+	};
+}
+
 export function defineApertureProviderConfig(
 	input: ApertureProviderConfigInput
 ): ApertureProviderConfig {
@@ -79,23 +106,8 @@ export function defineApertureProviderConfig(
 		baseUrl: input.baseUrl ?? DEFAULT_CONFIG.baseUrl,
 		apiKey: input.apiKey ?? DEFAULT_CONFIG.apiKey,
 		modelsPath: input.modelsPath ?? DEFAULT_CONFIG.modelsPath,
-		modelsDev: {
-			enabled: input.modelsDev?.enabled ?? DEFAULT_CONFIG.modelsDev.enabled,
-			url: input.modelsDev?.url ?? DEFAULT_CONFIG.modelsDev.url,
-			cacheTtlMs: input.modelsDev?.cacheTtlMs ?? DEFAULT_CONFIG.modelsDev.cacheTtlMs,
-			providerAliases: mergeProviderAliases(
-				DEFAULT_CONFIG.modelsDev.providerAliases,
-				input.modelsDev?.providerAliases
-			),
-		},
-		resolution: {
-			requireModelsDevForCapabilities:
-				input.resolution?.requireModelsDevForCapabilities ??
-				DEFAULT_CONFIG.resolution.requireModelsDevForCapabilities,
-			providerLabelInName:
-				input.resolution?.providerLabelInName ?? DEFAULT_CONFIG.resolution.providerLabelInName,
-			apiRules: input.resolution?.apiRules ?? DEFAULT_CONFIG.resolution.apiRules,
-		},
+		modelsDev: resolveModelsDevConfig(input.modelsDev),
+		resolution: resolveResolutionConfig(input.resolution),
 		modelOverrides: mergeModelOverrides(DEFAULT_CONFIG.modelOverrides, input.modelOverrides),
 	};
 }
