@@ -1,0 +1,45 @@
+{
+  "providerName": "shared-gateway",
+  "baseUrl": "https://your-aperture-or-gateway.example/v1",
+  "apiKey": "-",
+  "modelsPath": "/models",
+  "modelsDev": {
+    "enabled": true,
+    "url": "https://models.dev/api.json",
+    "cacheTtlMs": 3600000,
+    "providerAliases": {
+      "your-gateway-provider-id": [
+        "openai",
+        "openai-responses"
+      ]
+    }
+  },
+  "heuristics": {
+    "defaultApi": "openai-completions",
+    "providerLabelInName": true,
+    "apiRules": [
+      {
+        "match": [
+          "anthropic",
+          "/v1/messages"
+        ],
+        "api": "anthropic-messages"
+      },
+      {
+        "match": [
+          "responses",
+          "openai-responses",
+          "/v1/responses"
+        ],
+        "api": "openai-responses"
+      }
+    ]
+  },
+  "modelOverrides": {
+    "openai/gpt-5": {
+      "contextWindow": 128000,
+      "maxTokens": 32768
+    }
+  }
+}
+
