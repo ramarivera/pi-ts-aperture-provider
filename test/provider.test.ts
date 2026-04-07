@@ -5,7 +5,7 @@ import {
 	createApertureProviderRuntime,
 	defineApertureProviderConfig,
 	enrichApertureModelMetadata,
-} from "../src/index.js";
+} from "../src/index";
 
 test("runtime resolves api type from provider metadata and models.dev", async () => {
 	const config = defineApertureProviderConfig({

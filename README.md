@@ -18,9 +18,9 @@ Reusable aperture-provider logic extracted from a Pi extension so different user
 ## Quick start
 
 ```bash
-npm install
-npm run test
-npm run build
+corepack yarn install
+corepack yarn test
+corepack yarn build
 ```
 
 Copy [`aperture-provider.config.example.json`](/Users/ramarivera/dev/pi-ts-aperture-provider/aperture-provider.config.example.json) to your own config file and adjust:
@@ -83,6 +83,5 @@ export default function (pi: ExtensionAPI) {
 
 - [`src/config.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/config.ts)
 - [`src/models-dev.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/models-dev.ts)
-- [`src/heuristics.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/heuristics.ts)
 - [`src/provider.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/provider.ts)
 - [`test/provider.test.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/test/provider.test.ts)

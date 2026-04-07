@@ -3,9 +3,9 @@ export {
 	DEFAULT_PROVIDER_ALIASES,
 	defineApertureProviderConfig,
 	loadApertureProviderConfig,
-} from "./config.js";
-export { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev.js";
-export { createApertureProviderRuntime } from "./provider.js";
+} from "./config";
+export { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev";
+export { createApertureProviderRuntime } from "./provider";
 export type {
 	ApertureModel,
 	ApertureModelEnrichment,
@@ -29,4 +29,4 @@ export type {
 	ProviderRegistrar,
 	ProviderRegistration,
 	SyncContext,
-} from "./types.js";
+} from "./types";

@@ -7,7 +7,7 @@ import type {
 	ModelsDevModel,
 	ProviderCost,
 	ProviderInput,
-} from "./types.js";
+} from "./types";
 
 function normalizeValue(value: string | null | undefined): string {
 	return (value ?? "")

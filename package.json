@@ -2,6 +2,7 @@
 	"name": "pi-ts-aperture-provider",
 	"version": "0.1.0",
 	"private": true,
+	"packageManager": "yarn@1.22.22",
 	"description": "Config-driven aperture provider extraction for Pi-compatible extensions.",
 	"type": "module",
 	"repository": {
@@ -24,7 +25,7 @@
 		}
 	},
 	"scripts": {
-		"build": "tsc -p tsconfig.json",
+		"build": "tsup src/index.ts --format esm --dts --clean",
 		"clean": "rm -rf dist",
 		"check": "biome check .",
 		"format": "biome format --write .",
@@ -43,6 +44,7 @@
 		"@biomejs/biome": "2.4.10",
 		"@types/node": "latest",
 		"tsx": "latest",
+		"tsup": "8.5.1",
 		"typescript": "latest"
 	}
 }

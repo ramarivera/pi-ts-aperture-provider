@@ -1,10 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import type {
-	ApertureProviderConfig,
-	ApertureProviderConfigInput,
-	ModelOverride,
-} from "./types.js";
+import type { ApertureProviderConfig, ApertureProviderConfigInput, ModelOverride } from "./types";
 
 export const DEFAULT_PROVIDER_ALIASES: Record<string, string[]> = {
 	alibaba: ["alibaba", "alibaba-coding-plan", "alibaba-coding-plan-cn", "alibaba-cn"],

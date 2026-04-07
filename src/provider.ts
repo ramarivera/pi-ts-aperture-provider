@@ -1,5 +1,5 @@
-import { DEFAULT_CONFIG, defineApertureProviderConfig } from "./config.js";
-import { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev.js";
+import { DEFAULT_CONFIG, defineApertureProviderConfig } from "./config";
+import { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev";
 import type {
 	ApertureModel,
 	ApertureModelsResponse,
@@ -14,7 +14,7 @@ import type {
 	ProviderCost,
 	ProviderInput,
 	ProviderModel,
-} from "./types.js";
+} from "./types";
 
 function joinUrl(baseUrl: string, path: string): string {
 	return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
