@@ -1,0 +1,69 @@
+name: Publish Package
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          registry-url: "https://registry.npmjs.org"
+          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack yarn install --frozen-lockfile
+
+      - name: Run checks
+        run: corepack yarn run check
+
+      - name: Run tests
+        run: corepack yarn test
+
+      - name: Run typecheck
+        run: corepack yarn typecheck
+
+      - name: Build package
+        run: corepack yarn build
+
+      - name: Resolve publish target
+        id: package
+        run: |
+          echo "name=$(node -p "require('./package.json').name")" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether version already exists on npm
+        id: registry
+        run: |
+          if npm view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version >/dev/null 2>&1; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "version already published; skipping"
+          else
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "version not found on npm; publishing"
+          fi
+
+      - name: Publish to npm
+        if: steps.registry.outputs.should_publish == 'true'
+        run: npm publish --provenance

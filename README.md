@@ -118,3 +118,22 @@ npm publish
 - `name: "@ramarivera/pi-ts-aperture-provider"`
 - `publishConfig.registry: "https://registry.npmjs.org/"`
 - `publishConfig.access: "public"`
+
+## Trusted Publishing
+
+The repo includes a GitHub Actions workflow at [`.github/workflows/publish.yml`](/Users/ramarivera/dev/pi-ts-aperture-provider/.github/workflows/publish.yml) that:
+
+- runs on pushes to `main` or `master`
+- installs dependencies with Yarn
+- runs check, test, typecheck, and build
+- publishes only when the exact `package.json` version does not already exist on npm
+
+To enable npm trusted publishing, register this repository and workflow as a trusted publisher for `@ramarivera/pi-ts-aperture-provider` in npm.
+
+Once that trust relationship exists, publishing becomes:
+
+1. bump `version` in [`package.json`](/Users/ramarivera/dev/pi-ts-aperture-provider/package.json)
+2. commit the version bump on `main`
+3. push to GitHub
+
+The workflow will no-op for versions that are already published, so ordinary pushes stay safe.

@@ -1,9 +1,10 @@
 {
 	"name": "@ramarivera/pi-ts-aperture-provider",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": false,
 	"packageManager": "yarn@1.22.22",
 	"description": "Config-driven aperture provider extraction for Pi-compatible extensions.",
+	"license": "MIT",
 	"type": "module",
 	"publishConfig": {
 		"access": "public",
