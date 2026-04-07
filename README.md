@@ -31,11 +31,25 @@ corepack yarn build
 
 This package is now Pi-installable.
 
+### Super simple setup
+
 ```bash
-pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.0
+pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.1
+mkdir -p ~/.pi/agent
+cp aperture-provider.config.example.json ~/.pi/agent/aperture-provider.config.json
 ```
 
-Pi discovers the packaged extension from `package.json -> pi.extensions` and loads `extensions/index.ts` automatically.
+That is enough for Pi to load the extension. Pi discovers the packaged extension from `package.json -> pi.extensions` and loads `extensions/index.ts` automatically.
+
+If you prefer to do it manually instead of `pi install`, add this to `~/.pi/agent/settings.json`:
+
+```json
+{
+  "packages": [
+    "npm:@ramarivera/pi-ts-aperture-provider@0.2.1"
+  ]
+}
+```
 
 ## Configuration
 
