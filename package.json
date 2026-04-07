@@ -34,7 +34,7 @@
 		"clean": "rm -rf dist",
 		"check": "biome check .",
 		"format": "biome format --write .",
-		"test": "tsx --test test/**/*.test.ts",
+		"test": "tsx --test test/*.test.ts",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome lint ."
 	},
