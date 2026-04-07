@@ -75,6 +75,89 @@ test("runtime resolves api type from provider metadata and models.dev", async ()
 	}
 });
 
+test("runtime prefers aperture config compatibility over provider metadata hints", async () => {
+	const originalFetch = globalThis.fetch;
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+		if (url === "https://gateway.example/aperture/config") {
+			return new Response(
+				JSON.stringify({
+					config: `{
+						"providers": {
+							"provider-1": {
+								"compatibility": {
+									"openai_chat": false,
+									"anthropic_messages": true,
+									"openai_responses": false,
+								},
+							},
+						},
+					}`,
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "claude-sonnet-4",
+							metadata: {
+								provider: {
+									id: "provider-1",
+									name: "Anthropic Gateway",
+									description: "Actually misleadingly labeled via /v1/chat/completions",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(
+				JSON.stringify({
+					anthropic: {
+						id: "anthropic",
+						name: "Anthropic",
+						models: {
+							"claude-sonnet-4": {
+								id: "claude-sonnet-4",
+								reasoning: true,
+								modalities: { input: ["text"] },
+								limit: { context: 200000, output: 16384 },
+							},
+						},
+					},
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		const runtime = createApertureProviderRuntime({
+			providerName: "shared-aperture",
+			baseUrl: "https://gateway.example/v1",
+			modelsDev: {
+				url: "https://catalog.example/models.dev.json",
+			},
+		});
+		const { registration } = await runtime.buildRegistration();
+
+		assert.equal(registration.models[0]?.api, "anthropic-messages");
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
+
 test("models.dev enrichment matches provider aliases and normalized model ids", () => {
 	const config = defineApertureProviderConfig({
 		providerName: "shared-aperture",
@@ -129,6 +212,51 @@ test("models.dev enrichment matches provider aliases and normalized model ids", 
 	assert.equal(enrichment.reasoning, true);
 	assert.equal(enrichment.contextWindow, 128000);
 	assert.equal(enrichment.maxTokens, 32768);
+});
+
+test("models.dev enrichment derives generic provider hints from metadata phrases", () => {
+	const enrichment = enrichApertureModelMetadata(
+		{
+			id: "claude-sonnet-4",
+			metadata: {
+				provider: {
+					name: "OpenCode Zen Black",
+					description: "OpenCode Zen Black models exposed via /v1/messages",
+				},
+			},
+		},
+		{
+			providers: new Map(),
+			providerAliases: new Map([["opencode", ["opencode"]]]),
+			modelsByProviderAndId: new Map([
+				[
+					"opencode:claude-sonnet-4",
+					{
+						providerId: "opencode",
+						providerName: "OpenCode",
+						modelKey: "claude-sonnet-4",
+						model: {
+							reasoning: true,
+							modalities: {
+								input: ["text"],
+							},
+							limit: {
+								context: 200000,
+								output: 16384,
+							},
+						},
+					},
+				],
+			]),
+			modelsById: new Map(),
+			modelsByName: new Map(),
+		}
+	);
+
+	assert.equal(enrichment.reasoning, true);
+	assert.deepEqual(enrichment.input, ["text"]);
+	assert.equal(enrichment.contextWindow, 200000);
+	assert.equal(enrichment.maxTokens, 16384);
 });
 
 test("runtime builds registration from config and model overrides", async () => {

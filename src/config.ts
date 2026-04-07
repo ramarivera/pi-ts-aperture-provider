@@ -52,7 +52,9 @@ function mergeProviderAliases(
 	const merged = cloneRecordArrays(base);
 	for (const [key, value] of Object.entries(incoming ?? {})) {
 		const existing = new Set(merged[key] ?? []);
-		for (const alias of value) existing.add(alias);
+		for (const alias of value) {
+			existing.add(alias);
+		}
 		merged[key] = [...existing];
 	}
 	return merged;

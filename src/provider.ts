@@ -16,12 +16,126 @@ import type {
 	ProviderModel,
 } from "./types";
 
+type ApertureCompatibility = Partial<{
+	openai_chat: boolean;
+	openai_responses: boolean;
+	anthropic_messages: boolean;
+}>;
+
+type ApertureGatewayProviderConfig = {
+	compatibility?: ApertureCompatibility;
+};
+
+type ApertureGatewayConfig = {
+	providers?: Record<string, ApertureGatewayProviderConfig>;
+};
+
 function joinUrl(baseUrl: string, path: string): string {
 	return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
+function gatewayConfigUrl(baseUrl: string): string {
+	return new URL("/aperture/config", `${baseUrl.replace(/\/+$/, "")}/`).toString();
+}
+
 function normalizeValue(value: string | null | undefined): string {
 	return (value ?? "").toLowerCase().trim();
+}
+
+function stripLineComments(value: string): string {
+	let result = "";
+	let inString = false;
+	let stringDelimiter = "";
+	let escaped = false;
+
+	for (let index = 0; index < value.length; index += 1) {
+		const current = value[index];
+		const next = value[index + 1];
+
+		if (inString) {
+			result += current;
+			if (escaped) {
+				escaped = false;
+			} else if (current === "\\") {
+				escaped = true;
+			} else if (current === stringDelimiter) {
+				inString = false;
+				stringDelimiter = "";
+			}
+			continue;
+		}
+
+		if (current === '"' || current === "'") {
+			inString = true;
+			stringDelimiter = current;
+			result += current;
+			continue;
+		}
+
+		if (current === "/" && next === "/") {
+			while (index < value.length && value[index] !== "\n") {
+				index += 1;
+			}
+			if (index < value.length) {
+				result += value[index];
+			}
+			continue;
+		}
+
+		result += current;
+	}
+
+	return result;
+}
+
+function stripTrailingCommas(value: string): string {
+	let result = "";
+	let inString = false;
+	let stringDelimiter = "";
+	let escaped = false;
+
+	for (let index = 0; index < value.length; index += 1) {
+		const current = value[index];
+
+		if (inString) {
+			result += current;
+			if (escaped) {
+				escaped = false;
+			} else if (current === "\\") {
+				escaped = true;
+			} else if (current === stringDelimiter) {
+				inString = false;
+				stringDelimiter = "";
+			}
+			continue;
+		}
+
+		if (current === '"' || current === "'") {
+			inString = true;
+			stringDelimiter = current;
+			result += current;
+			continue;
+		}
+
+		if (current === ",") {
+			let lookahead = index + 1;
+			while (lookahead < value.length && /\s/.test(value[lookahead] ?? "")) {
+				lookahead += 1;
+			}
+			const next = value[lookahead];
+			if (next === "}" || next === "]") {
+				continue;
+			}
+		}
+
+		result += current;
+	}
+
+	return result;
+}
+
+function parseApertureGatewayConfig(rawConfig: string): ApertureGatewayConfig {
+	return JSON.parse(stripTrailingCommas(stripLineComments(rawConfig))) as ApertureGatewayConfig;
 }
 
 function inferCost(model: ApertureModel): ProviderCost {
@@ -57,6 +171,38 @@ function findModelOverride(modelId: string, overrides: ApertureProviderConfig["m
 	return overrides[modelId] ?? overrides[normalizeValue(modelId)];
 }
 
+function resolveApiFromCompatibility(
+	compatibility: ApertureCompatibility | undefined
+): ProviderApi | null {
+	const matches: ProviderApi[] = [];
+
+	if (compatibility?.anthropic_messages) {
+		matches.push("anthropic-messages");
+	}
+
+	if (compatibility?.openai_responses) {
+		matches.push("openai-responses");
+	}
+
+	if (compatibility?.openai_chat) {
+		matches.push("openai-completions");
+	}
+
+	return matches.length === 1 ? matches[0] : null;
+}
+
+function resolveApiFromGatewayConfig(
+	model: ApertureModel,
+	providerApiMap: Map<string, ProviderApi>
+): ProviderApi | null {
+	const providerId = normalizeValue(model.metadata?.provider?.id);
+	if (providerId === "") {
+		return null;
+	}
+
+	return providerApiMap.get(providerId) ?? null;
+}
+
 function resolveApiFromProviderMetadata(
 	model: ApertureModel,
 	config: ApertureProviderConfig
@@ -78,14 +224,31 @@ function resolveApiFromProviderMetadata(
 	);
 }
 
-function dedupeModels(models: ApertureModel[], config: ApertureProviderConfig): ApertureModel[] {
+function resolveApiForModel(
+	model: ApertureModel,
+	config: ApertureProviderConfig,
+	providerApiMap: Map<string, ProviderApi>
+): ProviderApi {
+	return (
+		resolveApiFromGatewayConfig(model, providerApiMap) ??
+		resolveApiFromProviderMetadata(model, config)
+	);
+}
+
+function dedupeModels(
+	models: ApertureModel[],
+	config: ApertureProviderConfig,
+	providerApiMap: Map<string, ProviderApi>
+): ApertureModel[] {
 	const seen = new Set<string>();
 	const deduped: ApertureModel[] = [];
 
 	for (const model of models) {
-		const api = resolveApiFromProviderMetadata(model, config);
+		const api = resolveApiForModel(model, config, providerApiMap);
 		const key = `${api}:${model.id}`;
-		if (seen.has(key)) continue;
+		if (seen.has(key)) {
+			continue;
+		}
 		seen.add(key);
 		deduped.push(model);
 	}
@@ -100,8 +263,13 @@ function requireCapability<T>(
 	modelsDevValue: T | null,
 	requireModelsDev: boolean
 ): T {
-	if (overrideValue !== undefined) return overrideValue;
-	if (modelsDevValue !== null) return modelsDevValue;
+	if (overrideValue !== undefined) {
+		return overrideValue;
+	}
+
+	if (modelsDevValue !== null) {
+		return modelsDevValue;
+	}
 
 	if (requireModelsDev) {
 		throw new Error(
@@ -117,10 +285,11 @@ function requireCapability<T>(
 function toProviderModel(
 	model: ApertureModel,
 	config: ApertureProviderConfig,
-	modelsDevIndex: ModelsDevIndex | null
+	modelsDevIndex: ModelsDevIndex | null,
+	providerApiMap: Map<string, ProviderApi>
 ): ProviderModel {
 	const override = findModelOverride(model.id, config.modelOverrides);
-	const api = override?.api ?? resolveApiFromProviderMetadata(model, config);
+	const api = override?.api ?? resolveApiForModel(model, config, providerApiMap);
 	const providerLabel = model.metadata?.provider?.name?.trim();
 	const compat = override?.compat ?? inferCompat(api);
 	const enriched = enrichApertureModelMetadata(model, modelsDevIndex);
@@ -178,10 +347,13 @@ export function createApertureProviderRuntime(
 	let modelsDevIndexPromise: Promise<ModelsDevIndex> | null = null;
 	let modelsDevIndexCache: ModelsDevIndex | null = null;
 	let modelsDevIndexCachedAt = 0;
+	let apertureConfigPromise: Promise<Map<string, ProviderApi>> | null = null;
+	let apertureConfigCache: Map<string, ProviderApi> | null = null;
 	let lastSyncSummary = "not synced yet";
 	let lastModelsDevSummary = "not fetched yet";
 
 	async function fetchApertureModels(): Promise<ApertureModel[]> {
+		const providerApiMap = await fetchProviderApiMap().catch(() => new Map<string, ProviderApi>());
 		const response = await fetch(joinUrl(config.baseUrl, config.modelsPath), {
 			headers: {
 				Authorization: `Bearer ${config.apiKey}`,
@@ -201,7 +373,53 @@ export function createApertureProviderRuntime(
 			throw new Error("Aperture provider returned no models");
 		}
 
-		return dedupeModels(models, config);
+		return dedupeModels(models, config, providerApiMap);
+	}
+
+	async function fetchProviderApiMap(): Promise<Map<string, ProviderApi>> {
+		if (apertureConfigCache) {
+			return apertureConfigCache;
+		}
+
+		if (apertureConfigPromise) {
+			return apertureConfigPromise;
+		}
+
+		apertureConfigPromise = (async () => {
+			const response = await fetch(gatewayConfigUrl(config.baseUrl), {
+				headers: {
+					"Content-Type": "application/json",
+				},
+			});
+
+			if (!response.ok) {
+				throw new Error(
+					`Failed to fetch aperture config: ${response.status} ${await response.text()}`
+				);
+			}
+
+			const payload = (await response.json()) as { config?: string | ApertureGatewayConfig };
+			const rawConfig = payload.config;
+			const parsedConfig =
+				typeof rawConfig === "string" ? parseApertureGatewayConfig(rawConfig) : (rawConfig ?? {});
+			const providerApiMap = new Map<string, ProviderApi>();
+
+			for (const [providerId, providerConfig] of Object.entries(parsedConfig.providers ?? {})) {
+				const api = resolveApiFromCompatibility(providerConfig.compatibility);
+				if (!api) {
+					continue;
+				}
+
+				providerApiMap.set(normalizeValue(providerId), api);
+			}
+
+			apertureConfigCache = providerApiMap;
+			return providerApiMap;
+		})().finally(() => {
+			apertureConfigPromise = null;
+		});
+
+		return apertureConfigPromise;
 	}
 
 	async function fetchModelsDevIndex(forceRefresh = false): Promise<ModelsDevIndex> {
@@ -219,7 +437,9 @@ export function createApertureProviderRuntime(
 			return modelsDevIndexCache;
 		}
 
-		if (modelsDevIndexPromise) return modelsDevIndexPromise;
+		if (modelsDevIndexPromise) {
+			return modelsDevIndexPromise;
+		}
 
 		modelsDevIndexPromise = (async () => {
 			const response = await fetch(config.modelsDev.url, {
@@ -255,12 +475,15 @@ export function createApertureProviderRuntime(
 	async function buildRegistration(options?: {
 		forceRefreshModelsDev?: boolean;
 	}): Promise<BuildRegistrationResult> {
-		const [apertureModels, modelsDevIndex] = await Promise.all([
+		const [providerApiMap, apertureModels, modelsDevIndex] = await Promise.all([
+			fetchProviderApiMap().catch(() => new Map<string, ProviderApi>()),
 			fetchApertureModels(),
 			fetchModelsDevIndex(options?.forceRefreshModelsDev).catch(() => null),
 		]);
 
-		const models = apertureModels.map((model) => toProviderModel(model, config, modelsDevIndex));
+		const models = apertureModels.map((model) =>
+			toProviderModel(model, config, modelsDevIndex, providerApiMap)
+		);
 		const modelsDevMatches = modelsDevIndex
 			? apertureModels.filter(
 					(model) => enrichApertureModelMetadata(model, modelsDevIndex).match != null
@@ -298,7 +521,9 @@ export function createApertureProviderRuntime(
 		ctx?: Parameters<ApertureProviderRuntime["sync"]>[1],
 		options?: Parameters<ApertureProviderRuntime["sync"]>[2]
 	): Promise<void> {
-		if (syncPromise) return syncPromise;
+		if (syncPromise) {
+			return syncPromise;
+		}
 
 		syncPromise = (async () => {
 			const { registration, summary } = await buildRegistration(options);

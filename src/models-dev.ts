@@ -28,6 +28,25 @@ function appendUnique(target: string[], values: (string | null | undefined)[]) {
 	}
 }
 
+function hintVariants(value: string | null | undefined): string[] {
+	const normalized = normalizeValue(value);
+	if (normalized === "") {
+		return [];
+	}
+
+	const parts = normalized.split(/[^a-z0-9]+/).filter(Boolean);
+	const variants = new Set<string>([normalized]);
+	const maxPhraseLength = Math.min(parts.length, 4);
+
+	for (let start = 0; start < parts.length; start += 1) {
+		for (let length = 1; length <= maxPhraseLength && start + length <= parts.length; length += 1) {
+			variants.add(parts.slice(start, start + length).join("-"));
+		}
+	}
+
+	return [...variants];
+}
+
 function providerHints(model: ApertureModel): string[] {
 	const providerId = model.metadata?.provider?.id;
 	const providerName = model.metadata?.provider?.name;
@@ -35,26 +54,11 @@ function providerHints(model: ApertureModel): string[] {
 	const hints: string[] = [];
 
 	appendUnique(hints, [providerId, providerName, providerDescription]);
-
-	const haystack = [
-		normalizeValue(providerId),
-		normalizeValue(providerName),
-		normalizeValue(providerDescription),
-	].join(" ");
-
-	if (haystack.includes("opencode-zen-black")) appendUnique(hints, ["opencode"]);
-	if (haystack.includes("anthropic")) appendUnique(hints, ["anthropic"]);
-	if (haystack.includes("openai")) appendUnique(hints, ["openai", "openai-responses"]);
-	if (haystack.includes("minimax")) appendUnique(hints, ["minimax"]);
-	if (haystack.includes("alibaba")) appendUnique(hints, ["alibaba", "qwen"]);
-	if (
-		haystack.includes("z-ai") ||
-		haystack.includes("zai") ||
-		haystack.includes("glm") ||
-		haystack.includes("zhipu")
-	) {
-		appendUnique(hints, ["zai"]);
-	}
+	appendUnique(hints, [
+		...hintVariants(providerId),
+		...hintVariants(providerName),
+		...hintVariants(providerDescription),
+	]);
 
 	return hints;
 }
@@ -77,7 +81,9 @@ function normalizeModelKeys(model: ApertureModel): string[] {
 	const variants = new Set<string>();
 
 	const add = (value: string) => {
-		if (value !== "") variants.add(value);
+		if (value !== "") {
+			variants.add(value);
+		}
 	};
 
 	add(normalizedId);
@@ -126,7 +132,9 @@ export function buildModelsDevIndex(
 		]);
 
 		for (const alias of aliases) {
-			if (alias === "") continue;
+			if (alias === "") {
+				continue;
+			}
 			const existing = new Set(providerAliases.get(alias) ?? []);
 			existing.add(providerId);
 			providerAliases.set(alias, [...existing]);
@@ -141,7 +149,9 @@ export function buildModelsDevIndex(
 			};
 
 			for (const key of new Set([normalizeValue(modelKey), normalizeValue(model.id)])) {
-				if (key === "") continue;
+				if (key === "") {
+					continue;
+				}
 				modelsByProviderAndId.set(`${providerId}:${key}`, entry);
 				insertMultiValue(modelsById, key, entry);
 			}
@@ -170,8 +180,14 @@ function toProviderInputModalities(model: ModelsDevModel): ProviderInput[] | nul
 
 	const normalized = rawInput.map((value) => normalizeValue(value));
 	const input: ProviderInput[] = [];
-	if (normalized.includes("text")) input.push("text");
-	if (normalized.includes("image")) input.push("image");
+
+	if (normalized.includes("text")) {
+		input.push("text");
+	}
+
+	if (normalized.includes("image")) {
+		input.push("image");
+	}
 
 	if (input.length === 0 && normalized.length > 0) {
 		input.push("text");
@@ -182,7 +198,9 @@ function toProviderInputModalities(model: ModelsDevModel): ProviderInput[] | nul
 
 function toProviderCost(model: ModelsDevModel): ProviderCost | null {
 	const cost = model.cost;
-	if (!cost) return null;
+	if (!cost) {
+		return null;
+	}
 
 	return {
 		input: Number(cost.input ?? 0) * 1_000_000,
@@ -200,7 +218,10 @@ function findProviderScopedMatch(
 	for (const providerId of preferredProviderIds(model, index)) {
 		for (const modelKey of modelKeys) {
 			const match = index.modelsByProviderAndId.get(`${providerId}:${modelKey}`);
-			if (match) return match;
+
+			if (match) {
+				return match;
+			}
 		}
 	}
 
@@ -213,12 +234,16 @@ function findGlobalMatch(
 ): IndexedModelsDevModel | null {
 	for (const modelKey of normalizeModelKeys(model)) {
 		const byId = index.modelsById.get(modelKey);
-		if (byId && byId.length > 0) return byId[0];
+		if (byId && byId.length > 0) {
+			return byId[0];
+		}
 	}
 
 	for (const modelKey of normalizeModelKeys(model)) {
 		const byName = index.modelsByName.get(modelKey);
-		if (byName && byName.length > 0) return byName[0];
+		if (byName && byName.length > 0) {
+			return byName[0];
+		}
 	}
 
 	return null;
