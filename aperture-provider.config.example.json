@@ -1,6 +1,6 @@
 {
   "providerName": "aperture-provider",
-  "baseUrl": "https://your-aperture-or-gateway.example/v1",
+  "baseUrl": "https://aperture-ai.xalda-procyon.ts.net/v1",
   "apiKey": "-",
   "modelsPath": "/models",
   "modelsDev": {

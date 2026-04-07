@@ -31,6 +31,8 @@ Copy [`aperture-provider.config.example.json`](/Users/ramarivera/dev/pi-ts-apert
 - `modelsDev.providerAliases`
 - `modelOverrides`
 
+For Aperture, `baseUrl` should be the primary gateway root the extension uses everywhere, either via the fully qualified tailnet hostname or the MagicDNS name your setup exposes. In your current setup that means `https://aperture-ai.xalda-procyon.ts.net/v1`, and the models fetch resolves from that via `modelsPath`.
+
 ## Core usage
 
 ```ts
