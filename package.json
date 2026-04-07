@@ -1,6 +1,6 @@
 {
 	"name": "@ramarivera/pi-ts-aperture-provider",
-	"version": "0.2.4-beta.0",
+	"version": "0.2.4",
 	"private": false,
 	"packageManager": "yarn@1.22.22",
 	"description": "Config-driven aperture provider extraction for Pi-compatible extensions.",
