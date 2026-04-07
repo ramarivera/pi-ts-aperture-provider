@@ -489,6 +489,15 @@ test("runtime splits mixed API models into separate provider registrations", asy
 		);
 		assert.equal(
 			registrations.find((entry) => entry.name === "aperture-gateway-anthropic")?.registration
+				.baseUrl,
+			"https://gateway.example"
+		);
+		assert.equal(
+			registrations.find((entry) => entry.name === "aperture-gateway-openai")?.registration.baseUrl,
+			"https://gateway.example/v1"
+		);
+		assert.equal(
+			registrations.find((entry) => entry.name === "aperture-gateway-anthropic")?.registration
 				.models[0]?.name,
 			"MiniMax-M2.7-highspeed (minimax)"
 		);

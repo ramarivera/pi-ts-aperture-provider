@@ -277,6 +277,14 @@ const PROVIDER_API_SUFFIX: Record<ProviderApi, string> = {
 	"anthropic-messages": "anthropic",
 };
 
+function registrationBaseUrl(baseUrl: string, api: ProviderApi): string {
+	if (api !== "anthropic-messages") {
+		return baseUrl;
+	}
+
+	return baseUrl.replace(/\/v1\/?$/, "");
+}
+
 function buildProviderRegistrations(
 	config: ApertureProviderConfig,
 	models: ProviderModel[]
@@ -295,7 +303,7 @@ function buildProviderRegistrations(
 	return entries.map(([api, apiModels]) => ({
 		name: useSuffixes ? `${config.providerName}-${PROVIDER_API_SUFFIX[api]}` : config.providerName,
 		registration: {
-			baseUrl: config.baseUrl,
+			baseUrl: registrationBaseUrl(config.baseUrl, api),
 			apiKey: config.apiKey,
 			api,
 			models: apiModels,
