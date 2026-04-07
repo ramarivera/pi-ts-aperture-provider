@@ -1,5 +1,5 @@
 {
-  "providerName": "shared-gateway",
+  "providerName": "aperture-provider",
   "baseUrl": "https://your-aperture-or-gateway.example/v1",
   "apiKey": "-",
   "modelsPath": "/models",
@@ -8,7 +8,7 @@
     "url": "https://models.dev/api.json",
     "cacheTtlMs": 3600000,
     "providerAliases": {
-      "your-gateway-provider-id": [
+      "your-aperture-provider-id": [
         "openai",
         "openai-responses"
       ]
@@ -42,4 +42,3 @@
     }
   }
 }
-

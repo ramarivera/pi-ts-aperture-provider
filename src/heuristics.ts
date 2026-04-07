@@ -1,6 +1,6 @@
 import type {
-	GatewayModel,
-	GatewayProviderConfig,
+	ApertureModel,
+	ApertureProviderConfig,
 	ModelOverride,
 	ProviderApi,
 	ProviderCompat,
@@ -16,15 +16,20 @@ function includesAny(haystack: string, values: string[]): boolean {
 	return values.some((value) => haystack.includes(normalizeValue(value)));
 }
 
-function findNumericRule(modelId: string, rules: GatewayProviderConfig["heuristics"]["contextWindowRules"]): number | null {
+function findNumericRule(
+	modelId: string,
+	rules: ApertureProviderConfig["heuristics"]["contextWindowRules"]
+): number | null {
 	const id = normalizeValue(modelId);
 	for (const rule of rules) {
-		if (includesAny(id, rule.match)) return rule.value;
+		if (includesAny(id, rule.match)) {
+			return rule.value;
+		}
 	}
 	return null;
 }
 
-export function inferApi(model: GatewayModel, config: GatewayProviderConfig): ProviderApi {
+export function inferApi(model: ApertureModel, config: ApertureProviderConfig): ProviderApi {
 	const providerId = normalizeValue(model.metadata?.provider?.id);
 	const providerDescription = normalizeValue(model.metadata?.provider?.description);
 	const providerName = normalizeValue(model.metadata?.provider?.name);
@@ -39,11 +44,11 @@ export function inferApi(model: GatewayModel, config: GatewayProviderConfig): Pr
 	return config.heuristics.defaultApi;
 }
 
-export function inferReasoning(modelId: string, config: GatewayProviderConfig): boolean {
+export function inferReasoning(modelId: string, config: ApertureProviderConfig): boolean {
 	return includesAny(modelId, config.heuristics.reasoningTokens);
 }
 
-export function inferInput(modelId: string, config: GatewayProviderConfig): ProviderInput[] {
+export function inferInput(modelId: string, config: ApertureProviderConfig): ProviderInput[] {
 	const id = normalizeValue(modelId);
 	if (includesAny(id, config.heuristics.imageTokens) || id.endsWith("v")) {
 		return ["text", "image"];
@@ -51,15 +56,15 @@ export function inferInput(modelId: string, config: GatewayProviderConfig): Prov
 	return ["text"];
 }
 
-export function inferContextWindow(modelId: string, config: GatewayProviderConfig): number {
+export function inferContextWindow(modelId: string, config: ApertureProviderConfig): number {
 	return findNumericRule(modelId, config.heuristics.contextWindowRules) ?? 128000;
 }
 
-export function inferMaxTokens(modelId: string, config: GatewayProviderConfig): number {
+export function inferMaxTokens(modelId: string, config: ApertureProviderConfig): number {
 	return findNumericRule(modelId, config.heuristics.maxTokensRules) ?? 32768;
 }
 
-export function inferCost(model: GatewayModel): ProviderCost {
+export function inferCost(model: ApertureModel): ProviderCost {
 	const pricing = model.pricing ?? {};
 	return {
 		input: Number(pricing.input ?? 0) * 1_000_000,
@@ -69,14 +74,17 @@ export function inferCost(model: GatewayModel): ProviderCost {
 	};
 }
 
-export function hasGatewayPricing(model: GatewayModel): boolean {
+export function hasAperturePricing(model: ApertureModel): boolean {
 	const pricing = model.pricing;
 	return pricing != null && Object.keys(pricing).length > 0;
 }
 
-export function dedupeModels(models: GatewayModel[], config: GatewayProviderConfig): GatewayModel[] {
+export function dedupeModels(
+	models: ApertureModel[],
+	config: ApertureProviderConfig
+): ApertureModel[] {
 	const seen = new Set<string>();
-	const deduped: GatewayModel[] = [];
+	const deduped: ApertureModel[] = [];
 
 	for (const model of models) {
 		const api = inferApi(model, config);
@@ -98,7 +106,9 @@ export function inferCompat(api: ProviderApi): ProviderCompat | undefined {
 	return undefined;
 }
 
-export function findModelOverride(modelId: string, overrides: Record<string, ModelOverride>): ModelOverride | undefined {
+export function findModelOverride(
+	modelId: string,
+	overrides: Record<string, ModelOverride>
+): ModelOverride | undefined {
 	return overrides[modelId] ?? overrides[normalizeValue(modelId)];
 }
-

@@ -1,16 +1,32 @@
-export { DEFAULT_CONFIG, DEFAULT_PROVIDER_ALIASES, defineGatewayProviderConfig, loadGatewayProviderConfig } from "./config.js";
-export { dedupeModels, findModelOverride, hasGatewayPricing, inferApi, inferCompat, inferContextWindow, inferCost, inferInput, inferMaxTokens, inferReasoning } from "./heuristics.js";
-export { buildModelsDevIndex, enrichGatewayModelMetadata } from "./models-dev.js";
-export { createGatewayProviderRuntime } from "./provider.js";
+export {
+	DEFAULT_CONFIG,
+	DEFAULT_PROVIDER_ALIASES,
+	defineApertureProviderConfig,
+	loadApertureProviderConfig,
+} from "./config.js";
+export {
+	dedupeModels,
+	findModelOverride,
+	hasAperturePricing,
+	inferApi,
+	inferCompat,
+	inferContextWindow,
+	inferCost,
+	inferInput,
+	inferMaxTokens,
+	inferReasoning,
+} from "./heuristics.js";
+export { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev.js";
+export { createApertureProviderRuntime } from "./provider.js";
 export type {
+	ApertureModel,
+	ApertureModelEnrichment,
+	ApertureModelsResponse,
+	ApertureProviderConfig,
+	ApertureProviderConfigInput,
+	ApertureProviderRuntime,
 	ApiRule,
 	BuildRegistrationResult,
-	GatewayModel,
-	GatewayModelEnrichment,
-	GatewayModelsResponse,
-	GatewayProviderConfig,
-	GatewayProviderConfigInput,
-	GatewayProviderRuntime,
 	IndexedModelsDevModel,
 	ModelOverride,
 	ModelsDevApiResponse,
@@ -27,4 +43,3 @@ export type {
 	ProviderRegistration,
 	SyncContext,
 } from "./types.js";
-

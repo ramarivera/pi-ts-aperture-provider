@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 
-import type { GatewayProviderConfig, GatewayProviderConfigInput, ModelOverride } from "./types.js";
+import type {
+	ApertureProviderConfig,
+	ApertureProviderConfigInput,
+	ModelOverride,
+} from "./types.js";
 
 export const DEFAULT_PROVIDER_ALIASES: Record<string, string[]> = {
 	alibaba: ["alibaba", "alibaba-coding-plan", "alibaba-coding-plan-cn", "alibaba-cn"],
@@ -13,8 +17,8 @@ export const DEFAULT_PROVIDER_ALIASES: Record<string, string[]> = {
 	zai: ["z-ai", "zai", "zai-coding-plan", "zhipuai"],
 };
 
-export const DEFAULT_CONFIG: GatewayProviderConfig = {
-	providerName: "gateway-provider",
+export const DEFAULT_CONFIG: ApertureProviderConfig = {
+	providerName: "aperture-provider",
 	baseUrl: "",
 	apiKey: "-",
 	modelsPath: "/models",
@@ -37,7 +41,18 @@ export const DEFAULT_CONFIG: GatewayProviderConfig = {
 				api: "openai-responses",
 			},
 		],
-		reasoningTokens: ["gpt-5", "claude", "glm", "kimi", "qwen", "minimax", "codex", "opus", "sonnet", "haiku"],
+		reasoningTokens: [
+			"gpt-5",
+			"claude",
+			"glm",
+			"kimi",
+			"qwen",
+			"minimax",
+			"codex",
+			"opus",
+			"sonnet",
+			"haiku",
+		],
 		imageTokens: ["vision", "-vl"],
 		contextWindowRules: [
 			{ match: ["gpt-5"], value: 128000 },
@@ -54,7 +69,7 @@ export const DEFAULT_CONFIG: GatewayProviderConfig = {
 
 function mergeProviderAliases(
 	base: Record<string, string[]>,
-	incoming: Record<string, string[]> | undefined,
+	incoming: Record<string, string[]> | undefined
 ): Record<string, string[]> {
 	const merged: Record<string, string[]> = {};
 	for (const [key, value] of Object.entries(base)) {
@@ -68,7 +83,10 @@ function mergeProviderAliases(
 	return merged;
 }
 
-function mergeModelOverrides(base: Record<string, ModelOverride>, incoming: Record<string, ModelOverride> | undefined) {
+function mergeModelOverrides(
+	base: Record<string, ModelOverride>,
+	incoming: Record<string, ModelOverride> | undefined
+) {
 	const merged: Record<string, ModelOverride> = { ...base };
 	for (const [modelId, override] of Object.entries(incoming ?? {})) {
 		merged[modelId] = {
@@ -79,7 +97,9 @@ function mergeModelOverrides(base: Record<string, ModelOverride>, incoming: Reco
 	return merged;
 }
 
-export function defineGatewayProviderConfig(input: GatewayProviderConfigInput): GatewayProviderConfig {
+export function defineApertureProviderConfig(
+	input: ApertureProviderConfigInput
+): ApertureProviderConfig {
 	return {
 		providerName: input.providerName ?? DEFAULT_CONFIG.providerName,
 		baseUrl: input.baseUrl ?? DEFAULT_CONFIG.baseUrl,
@@ -89,24 +109,31 @@ export function defineGatewayProviderConfig(input: GatewayProviderConfigInput): 
 			enabled: input.modelsDev?.enabled ?? DEFAULT_CONFIG.modelsDev.enabled,
 			url: input.modelsDev?.url ?? DEFAULT_CONFIG.modelsDev.url,
 			cacheTtlMs: input.modelsDev?.cacheTtlMs ?? DEFAULT_CONFIG.modelsDev.cacheTtlMs,
-			providerAliases: mergeProviderAliases(DEFAULT_CONFIG.modelsDev.providerAliases, input.modelsDev?.providerAliases),
+			providerAliases: mergeProviderAliases(
+				DEFAULT_CONFIG.modelsDev.providerAliases,
+				input.modelsDev?.providerAliases
+			),
 		},
 		heuristics: {
 			defaultApi: input.heuristics?.defaultApi ?? DEFAULT_CONFIG.heuristics.defaultApi,
-			providerLabelInName: input.heuristics?.providerLabelInName ?? DEFAULT_CONFIG.heuristics.providerLabelInName,
+			providerLabelInName:
+				input.heuristics?.providerLabelInName ?? DEFAULT_CONFIG.heuristics.providerLabelInName,
 			apiRules: input.heuristics?.apiRules ?? DEFAULT_CONFIG.heuristics.apiRules,
-			reasoningTokens: input.heuristics?.reasoningTokens ?? DEFAULT_CONFIG.heuristics.reasoningTokens,
+			reasoningTokens:
+				input.heuristics?.reasoningTokens ?? DEFAULT_CONFIG.heuristics.reasoningTokens,
 			imageTokens: input.heuristics?.imageTokens ?? DEFAULT_CONFIG.heuristics.imageTokens,
-			contextWindowRules: input.heuristics?.contextWindowRules ?? DEFAULT_CONFIG.heuristics.contextWindowRules,
+			contextWindowRules:
+				input.heuristics?.contextWindowRules ?? DEFAULT_CONFIG.heuristics.contextWindowRules,
 			maxTokensRules: input.heuristics?.maxTokensRules ?? DEFAULT_CONFIG.heuristics.maxTokensRules,
 		},
 		modelOverrides: mergeModelOverrides(DEFAULT_CONFIG.modelOverrides, input.modelOverrides),
 	};
 }
 
-export async function loadGatewayProviderConfig(pathOrUrl: string | URL): Promise<GatewayProviderConfig> {
+export async function loadApertureProviderConfig(
+	pathOrUrl: string | URL
+): Promise<ApertureProviderConfig> {
 	const raw = await readFile(pathOrUrl, "utf8");
-	const parsed = JSON.parse(raw) as GatewayProviderConfigInput;
-	return defineGatewayProviderConfig(parsed);
+	const parsed = JSON.parse(raw) as ApertureProviderConfigInput;
+	return defineApertureProviderConfig(parsed);
 }
-

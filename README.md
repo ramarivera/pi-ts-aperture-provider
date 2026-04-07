@@ -1,6 +1,6 @@
 # `pi-ts-aperture-provider`
 
-Reusable gateway-provider logic extracted from a Pi extension so different users can share the same codebase while keeping instance-specific details in config.
+Reusable aperture-provider logic extracted from a Pi extension so different users can share the same codebase while keeping instance-specific details in config.
 
 ## What lives here
 
@@ -23,7 +23,7 @@ npm run test
 npm run build
 ```
 
-Copy [`gateway-provider.config.example.json`](/Users/ramarivera/dev/pi-ts-aperture-provider/gateway-provider.config.example.json) to your own config file and adjust:
+Copy [`aperture-provider.config.example.json`](/Users/ramarivera/dev/pi-ts-aperture-provider/aperture-provider.config.example.json) to your own config file and adjust:
 
 - `providerName`
 - `baseUrl`
@@ -34,10 +34,10 @@ Copy [`gateway-provider.config.example.json`](/Users/ramarivera/dev/pi-ts-apertu
 ## Core usage
 
 ```ts
-import { createGatewayProviderRuntime, loadGatewayProviderConfig } from "pi-ts-aperture-provider";
+import { createApertureProviderRuntime, loadApertureProviderConfig } from "pi-ts-aperture-provider";
 
-const config = await loadGatewayProviderConfig(new URL("./gateway-provider.config.json", import.meta.url));
-const runtime = createGatewayProviderRuntime(config);
+const config = await loadApertureProviderConfig(new URL("./aperture-provider.config.json", import.meta.url));
+const runtime = createApertureProviderRuntime(config);
 
 await runtime.sync({
   registerProvider(name, registration) {
@@ -52,13 +52,13 @@ The repo intentionally keeps the core Pi-agnostic. A thin local Pi extension can
 
 ```ts
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { createGatewayProviderRuntime, loadGatewayProviderConfig } from "pi-ts-aperture-provider";
+import { createApertureProviderRuntime, loadApertureProviderConfig } from "pi-ts-aperture-provider";
 
-const configPromise = loadGatewayProviderConfig(new URL("./gateway-provider.config.json", import.meta.url));
+const configPromise = loadApertureProviderConfig(new URL("./aperture-provider.config.json", import.meta.url));
 
 export default function (pi: ExtensionAPI) {
   void configPromise.then((config) => {
-    const runtime = createGatewayProviderRuntime(config);
+    const runtime = createApertureProviderRuntime(config);
     return runtime.sync({
       registerProvider(name, registration) {
         pi.registerProvider(name, registration as never);
@@ -75,4 +75,3 @@ export default function (pi: ExtensionAPI) {
 - [`src/heuristics.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/heuristics.ts)
 - [`src/provider.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/provider.ts)
 - [`test/provider.test.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/test/provider.test.ts)
-

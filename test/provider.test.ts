@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createGatewayProviderRuntime, defineGatewayProviderConfig, enrichGatewayModelMetadata, inferApi } from "../src/index.js";
+import {
+	createApertureProviderRuntime,
+	defineApertureProviderConfig,
+	enrichApertureModelMetadata,
+	inferApi,
+} from "../src/index.js";
 
 test("inferApi uses config rules instead of Aperture-specific defaults", () => {
-	const config = defineGatewayProviderConfig({
-		providerName: "shared-gateway",
+	const config = defineApertureProviderConfig({
+		providerName: "shared-aperture",
 		baseUrl: "https://gateway.example/v1",
 	});
 
@@ -24,8 +29,8 @@ test("inferApi uses config rules instead of Aperture-specific defaults", () => {
 });
 
 test("models.dev enrichment matches provider aliases and normalized model ids", () => {
-	const config = defineGatewayProviderConfig({
-		providerName: "shared-gateway",
+	const config = defineApertureProviderConfig({
+		providerName: "shared-aperture",
 		baseUrl: "https://gateway.example/v1",
 		modelsDev: {
 			providerAliases: {
@@ -34,12 +39,12 @@ test("models.dev enrichment matches provider aliases and normalized model ids", 
 		},
 	});
 
-	const runtime = createGatewayProviderRuntime(config);
+	const runtime = createApertureProviderRuntime(config);
 	const index = runtime.getConfig().modelsDev.providerAliases;
 
 	assert.deepEqual(index["openai-responses"].includes("custom-openai"), true);
 
-	const enrichment = enrichGatewayModelMetadata(
+	const enrichment = enrichApertureModelMetadata(
 		{
 			id: "gpt-5-highspeed",
 			metadata: {
@@ -71,7 +76,7 @@ test("models.dev enrichment matches provider aliases and normalized model ids", 
 			]),
 			modelsById: new Map(),
 			modelsByName: new Map(),
-		},
+		}
 	);
 
 	assert.equal(enrichment.reasoning, true);
@@ -100,7 +105,7 @@ test("runtime builds registration from config and model overrides", async () => 
 						},
 					],
 				}),
-				{ status: 200, headers: { "content-type": "application/json" } },
+				{ status: 200, headers: { "content-type": "application/json" } }
 			);
 		}
 
@@ -122,7 +127,7 @@ test("runtime builds registration from config and model overrides", async () => 
 						},
 					},
 				}),
-				{ status: 200, headers: { "content-type": "application/json" } },
+				{ status: 200, headers: { "content-type": "application/json" } }
 			);
 		}
 
@@ -130,8 +135,8 @@ test("runtime builds registration from config and model overrides", async () => 
 	};
 
 	try {
-		const runtime = createGatewayProviderRuntime({
-			providerName: "custom-gateway",
+		const runtime = createApertureProviderRuntime({
+			providerName: "custom-aperture",
 			baseUrl: "https://gateway.example/v1",
 			modelsDev: {
 				url: "https://catalog.example/models.dev.json",
@@ -143,7 +148,10 @@ test("runtime builds registration from config and model overrides", async () => 
 			},
 		});
 
-		const registrations: Array<{ name: string; registration: Awaited<ReturnType<typeof runtime.buildRegistration>>["registration"] }> = [];
+		const registrations: Array<{
+			name: string;
+			registration: Awaited<ReturnType<typeof runtime.buildRegistration>>["registration"];
+		}> = [];
 
 		await runtime.sync({
 			registerProvider(name, registration) {
@@ -152,7 +160,7 @@ test("runtime builds registration from config and model overrides", async () => 
 		});
 
 		assert.equal(registrations.length, 1);
-		assert.equal(registrations[0]?.name, "custom-gateway");
+		assert.equal(registrations[0]?.name, "custom-aperture");
 		assert.equal(registrations[0]?.registration.models[0]?.contextWindow, 128000);
 		assert.equal(registrations[0]?.registration.models[0]?.maxTokens, 32000);
 		assert.equal(runtime.getState().lastSyncSummary.includes("1 models"), true);

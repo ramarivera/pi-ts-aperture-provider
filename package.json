@@ -1,44 +1,48 @@
 {
-  "name": "pi-ts-aperture-provider",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Config-driven gateway provider extraction for Pi-compatible extensions.",
-  "type": "module",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ramarivera/pi-ts-aperture-provider.git"
-  },
-  "bugs": {
-    "url": "https://github.com/ramarivera/pi-ts-aperture-provider/issues"
-  },
-  "homepage": "https://github.com/ramarivera/pi-ts-aperture-provider#readme",
-  "files": [
-    "dist",
-    "README.md",
-    "gateway-provider.config.example.json"
-  ],
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "clean": "rm -rf dist",
-    "test": "tsx --test test/**/*.test.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "keywords": [
-    "pi",
-    "gateway",
-    "models.dev",
-    "aperture",
-    "extension"
-  ],
-  "devDependencies": {
-    "@types/node": "latest",
-    "tsx": "latest",
-    "typescript": "latest"
-  }
+	"name": "pi-ts-aperture-provider",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Config-driven aperture provider extraction for Pi-compatible extensions.",
+	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/ramarivera/pi-ts-aperture-provider.git"
+	},
+	"bugs": {
+		"url": "https://github.com/ramarivera/pi-ts-aperture-provider/issues"
+	},
+	"homepage": "https://github.com/ramarivera/pi-ts-aperture-provider#readme",
+	"files": [
+		"dist",
+		"README.md",
+		"aperture-provider.config.example.json"
+	],
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"clean": "rm -rf dist",
+		"check": "biome check .",
+		"format": "biome format --write .",
+		"test": "tsx --test test/**/*.test.ts",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome lint ."
+	},
+	"keywords": [
+		"pi",
+		"gateway",
+		"models.dev",
+		"aperture",
+		"extension"
+	],
+	"devDependencies": {
+		"@biomejs/biome": "2.4.10",
+		"@types/node": "latest",
+		"tsx": "latest",
+		"typescript": "latest"
+	}
 }

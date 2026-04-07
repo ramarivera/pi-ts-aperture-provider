@@ -2,7 +2,7 @@ export type ProviderApi = "openai-completions" | "openai-responses" | "anthropic
 
 export type ProviderInput = "text" | "image";
 
-export type GatewayModel = {
+export type ApertureModel = {
 	id: string;
 	object?: string;
 	created?: number;
@@ -17,9 +17,9 @@ export type GatewayModel = {
 	pricing?: Record<string, string>;
 };
 
-export type GatewayModelsResponse = {
+export type ApertureModelsResponse = {
 	object?: string;
-	data?: GatewayModel[];
+	data?: ApertureModel[];
 };
 
 export type ProviderCost = {
@@ -105,7 +105,7 @@ export type ModelsDevIndex = {
 	modelsByName: Map<string, IndexedModelsDevModel[]>;
 };
 
-export type GatewayModelEnrichment = {
+export type ApertureModelEnrichment = {
 	match: IndexedModelsDevModel | null;
 	reasoning: boolean | null;
 	input: ProviderInput[] | null;
@@ -135,7 +135,7 @@ export type ModelOverride = Partial<{
 	compat: ProviderCompat;
 }>;
 
-export type GatewayProviderConfig = {
+export type ApertureProviderConfig = {
 	providerName: string;
 	baseUrl: string;
 	apiKey: string;
@@ -158,13 +158,13 @@ export type GatewayProviderConfig = {
 	modelOverrides: Record<string, ModelOverride>;
 };
 
-export type GatewayProviderConfigInput = Partial<{
+export type ApertureProviderConfigInput = Partial<{
 	providerName: string;
 	baseUrl: string;
 	apiKey: string;
 	modelsPath: string;
-	modelsDev: Partial<GatewayProviderConfig["modelsDev"]>;
-	heuristics: Partial<GatewayProviderConfig["heuristics"]>;
+	modelsDev: Partial<ApertureProviderConfig["modelsDev"]>;
+	heuristics: Partial<ApertureProviderConfig["heuristics"]>;
 	modelOverrides: Record<string, ModelOverride>;
 }>;
 
@@ -174,15 +174,20 @@ export type BuildRegistrationResult = {
 	modelsDevSummary: string;
 };
 
-export type GatewayProviderRuntime = {
-	sync(registrar: ProviderRegistrar, ctx?: SyncContext, options?: { forceRefreshModelsDev?: boolean }): Promise<void>;
-	buildRegistration(options?: { forceRefreshModelsDev?: boolean }): Promise<BuildRegistrationResult>;
-	fetchGatewayModels(): Promise<GatewayModel[]>;
+export type ApertureProviderRuntime = {
+	sync(
+		registrar: ProviderRegistrar,
+		ctx?: SyncContext,
+		options?: { forceRefreshModelsDev?: boolean }
+	): Promise<void>;
+	buildRegistration(options?: {
+		forceRefreshModelsDev?: boolean;
+	}): Promise<BuildRegistrationResult>;
+	fetchApertureModels(): Promise<ApertureModel[]>;
 	fetchModelsDevIndex(forceRefresh?: boolean): Promise<ModelsDevIndex>;
 	getState(): {
 		lastSyncSummary: string;
 		lastModelsDevSummary: string;
 	};
-	getConfig(): GatewayProviderConfig;
+	getConfig(): ApertureProviderConfig;
 };
-

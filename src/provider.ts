@@ -1,8 +1,8 @@
-import { DEFAULT_CONFIG, defineGatewayProviderConfig } from "./config.js";
+import { DEFAULT_CONFIG, defineApertureProviderConfig } from "./config.js";
 import {
 	dedupeModels,
 	findModelOverride,
-	hasGatewayPricing,
+	hasAperturePricing,
 	inferApi,
 	inferCompat,
 	inferContextWindow,
@@ -11,14 +11,14 @@ import {
 	inferMaxTokens,
 	inferReasoning,
 } from "./heuristics.js";
-import { buildModelsDevIndex, enrichGatewayModelMetadata } from "./models-dev.js";
+import { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev.js";
 import type {
+	ApertureModel,
+	ApertureModelsResponse,
+	ApertureProviderConfig,
+	ApertureProviderConfigInput,
+	ApertureProviderRuntime,
 	BuildRegistrationResult,
-	GatewayModel,
-	GatewayModelsResponse,
-	GatewayProviderConfig,
-	GatewayProviderConfigInput,
-	GatewayProviderRuntime,
 	ModelsDevApiResponse,
 	ModelsDevIndex,
 	ProviderModel,
@@ -28,30 +28,40 @@ function joinUrl(baseUrl: string, path: string): string {
 	return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
-function toProviderModel(model: GatewayModel, config: GatewayProviderConfig, modelsDevIndex: ModelsDevIndex | null): ProviderModel {
+function toProviderModel(
+	model: ApertureModel,
+	config: ApertureProviderConfig,
+	modelsDevIndex: ModelsDevIndex | null
+): ProviderModel {
 	const override = findModelOverride(model.id, config.modelOverrides);
 	const api = override?.api ?? inferApi(model, config);
 	const providerLabel = model.metadata?.provider?.name?.trim();
 	const compat = override?.compat ?? inferCompat(api);
-	const enriched = enrichGatewayModelMetadata(model, modelsDevIndex);
-	const cost = hasGatewayPricing(model) ? inferCost(model) : enriched.cost ?? inferCost(model);
+	const enriched = enrichApertureModelMetadata(model, modelsDevIndex);
+	const cost = hasAperturePricing(model) ? inferCost(model) : (enriched.cost ?? inferCost(model));
 
 	return {
 		id: model.id,
-		name: override?.name
-			?? (config.heuristics.providerLabelInName && providerLabel ? `${model.id} (${providerLabel})` : model.id),
+		name:
+			override?.name ??
+			(config.heuristics.providerLabelInName && providerLabel
+				? `${model.id} (${providerLabel})`
+				: model.id),
 		api,
 		reasoning: override?.reasoning ?? enriched.reasoning ?? inferReasoning(model.id, config),
 		input: override?.input ?? enriched.input ?? inferInput(model.id, config),
 		cost: override?.cost ?? cost,
-		contextWindow: override?.contextWindow ?? enriched.contextWindow ?? inferContextWindow(model.id, config),
+		contextWindow:
+			override?.contextWindow ?? enriched.contextWindow ?? inferContextWindow(model.id, config),
 		maxTokens: override?.maxTokens ?? enriched.maxTokens ?? inferMaxTokens(model.id, config),
 		...(compat ? { compat } : {}),
 	};
 }
 
-export function createGatewayProviderRuntime(input: GatewayProviderConfigInput): GatewayProviderRuntime {
-	const config = defineGatewayProviderConfig({
+export function createApertureProviderRuntime(
+	input: ApertureProviderConfigInput
+): ApertureProviderRuntime {
+	const config = defineApertureProviderConfig({
 		...DEFAULT_CONFIG,
 		...input,
 	});
@@ -62,7 +72,7 @@ export function createGatewayProviderRuntime(input: GatewayProviderConfigInput):
 	let lastSyncSummary = "not synced yet";
 	let lastModelsDevSummary = "not fetched yet";
 
-	async function fetchGatewayModels(): Promise<GatewayModel[]> {
+	async function fetchApertureModels(): Promise<ApertureModel[]> {
 		const response = await fetch(joinUrl(config.baseUrl, config.modelsPath), {
 			headers: {
 				Authorization: `Bearer ${config.apiKey}`,
@@ -71,13 +81,15 @@ export function createGatewayProviderRuntime(input: GatewayProviderConfigInput):
 		});
 
 		if (!response.ok) {
-			throw new Error(`Failed to fetch gateway models: ${response.status} ${await response.text()}`);
+			throw new Error(
+				`Failed to fetch aperture models: ${response.status} ${await response.text()}`
+			);
 		}
 
-		const payload = (await response.json()) as GatewayModelsResponse;
+		const payload = (await response.json()) as ApertureModelsResponse;
 		const models = payload.data ?? [];
 		if (!Array.isArray(models) || models.length === 0) {
-			throw new Error("Gateway returned no models");
+			throw new Error("Aperture provider returned no models");
 		}
 
 		return dedupeModels(models, config);
@@ -90,7 +102,11 @@ export function createGatewayProviderRuntime(input: GatewayProviderConfigInput):
 		}
 
 		const now = Date.now();
-		if (!forceRefresh && modelsDevIndexCache && now - modelsDevIndexCachedAt < config.modelsDev.cacheTtlMs) {
+		if (
+			!forceRefresh &&
+			modelsDevIndexCache &&
+			now - modelsDevIndexCachedAt < config.modelsDev.cacheTtlMs
+		) {
 			return modelsDevIndexCache;
 		}
 
@@ -104,7 +120,9 @@ export function createGatewayProviderRuntime(input: GatewayProviderConfigInput):
 			});
 
 			if (!response.ok) {
-				throw new Error(`Failed to fetch models.dev catalog: ${response.status} ${await response.text()}`);
+				throw new Error(
+					`Failed to fetch models.dev catalog: ${response.status} ${await response.text()}`
+				);
 			}
 
 			const payload = (await response.json()) as ModelsDevApiResponse;
@@ -125,15 +143,19 @@ export function createGatewayProviderRuntime(input: GatewayProviderConfigInput):
 		return modelsDevIndexPromise;
 	}
 
-	async function buildRegistration(options?: { forceRefreshModelsDev?: boolean }): Promise<BuildRegistrationResult> {
-		const [gatewayModels, modelsDevIndex] = await Promise.all([
-			fetchGatewayModels(),
+	async function buildRegistration(options?: {
+		forceRefreshModelsDev?: boolean;
+	}): Promise<BuildRegistrationResult> {
+		const [apertureModels, modelsDevIndex] = await Promise.all([
+			fetchApertureModels(),
 			fetchModelsDevIndex(options?.forceRefreshModelsDev).catch(() => null),
 		]);
 
-		const models = gatewayModels.map((model) => toProviderModel(model, config, modelsDevIndex));
+		const models = apertureModels.map((model) => toProviderModel(model, config, modelsDevIndex));
 		const modelsDevMatches = modelsDevIndex
-			? gatewayModels.filter((model) => enrichGatewayModelMetadata(model, modelsDevIndex).match != null).length
+			? apertureModels.filter(
+					(model) => enrichApertureModelMetadata(model, modelsDevIndex).match != null
+				).length
 			: 0;
 
 		const apiCounts = models.reduce<Record<string, number>>((acc, model) => {
@@ -141,9 +163,10 @@ export function createGatewayProviderRuntime(input: GatewayProviderConfigInput):
 			return acc;
 		}, {});
 
-		const modelsDevSummary = modelsDevIndex == null
-			? `models.dev unavailable (${lastModelsDevSummary})`
-			: `${modelsDevMatches}/${gatewayModels.length} enriched via models.dev`;
+		const modelsDevSummary =
+			modelsDevIndex == null
+				? `models.dev unavailable (${lastModelsDevSummary})`
+				: `${modelsDevMatches}/${apertureModels.length} enriched via models.dev`;
 
 		const summary = `${models.length} models (${Object.entries(apiCounts)
 			.map(([api, count]) => `${count} ${api}`)
@@ -162,9 +185,9 @@ export function createGatewayProviderRuntime(input: GatewayProviderConfigInput):
 	}
 
 	async function sync(
-		registrar: Parameters<GatewayProviderRuntime["sync"]>[0],
-		ctx?: Parameters<GatewayProviderRuntime["sync"]>[1],
-		options?: Parameters<GatewayProviderRuntime["sync"]>[2],
+		registrar: Parameters<ApertureProviderRuntime["sync"]>[0],
+		ctx?: Parameters<ApertureProviderRuntime["sync"]>[1],
+		options?: Parameters<ApertureProviderRuntime["sync"]>[2]
 	): Promise<void> {
 		if (syncPromise) return syncPromise;
 
@@ -189,7 +212,7 @@ export function createGatewayProviderRuntime(input: GatewayProviderConfigInput):
 	return {
 		sync,
 		buildRegistration,
-		fetchGatewayModels,
+		fetchApertureModels,
 		fetchModelsDevIndex,
 		getState() {
 			return {
@@ -202,4 +225,3 @@ export function createGatewayProviderRuntime(input: GatewayProviderConfigInput):
 		},
 	};
 }
-
