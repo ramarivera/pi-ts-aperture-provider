@@ -34,7 +34,7 @@ This package is now Pi-installable.
 ### Super simple setup
 
 ```bash
-pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.1
+pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.2
 mkdir -p ~/.pi/agent
 cp aperture-provider.config.example.json ~/.pi/agent/aperture-provider.config.json
 ```
@@ -46,7 +46,7 @@ If you prefer to do it manually instead of `pi install`, add this to `~/.pi/agen
 ```json
 {
   "packages": [
-    "npm:@ramarivera/pi-ts-aperture-provider@0.2.1"
+    "npm:@ramarivera/pi-ts-aperture-provider@0.2.2"
   ]
 }
 ```
