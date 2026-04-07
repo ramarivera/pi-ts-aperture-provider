@@ -168,6 +168,20 @@ function providerHaystack(provider: ApertureProviderMetadata | undefined): strin
 	return [provider?.id, provider?.name, provider?.description].map(normalizeValue).join(" ");
 }
 
+function providerNameLabel(provider: ApertureProviderMetadata | undefined): string | null {
+	const providerId = provider?.id?.trim();
+	if (providerId) {
+		return providerId;
+	}
+
+	const providerName = provider?.name?.trim();
+	if (providerName) {
+		return providerName;
+	}
+
+	return null;
+}
+
 function findModelOverride(modelId: string, overrides: ApertureProviderConfig["modelOverrides"]) {
 	return overrides[modelId] ?? overrides[normalizeValue(modelId)];
 }
@@ -323,7 +337,7 @@ function toProviderModel(
 ): ProviderModel {
 	const override = findModelOverride(model.id, config.modelOverrides);
 	const api = override?.api ?? resolveApiForModel(model, config, providerApiMap);
-	const providerLabel = model.metadata?.provider?.name?.trim();
+	const providerLabel = providerNameLabel(model.metadata?.provider);
 	const compat = override?.compat ?? inferCompat(api);
 	const enriched = enrichApertureModelMetadata(model, modelsDevIndex);
 	const cost = hasAperturePricing(model) ? inferCost(model) : (enriched.cost ?? inferCost(model));

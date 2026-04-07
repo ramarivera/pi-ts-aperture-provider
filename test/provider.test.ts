@@ -76,6 +76,7 @@ test("runtime resolves api type from provider metadata and models.dev", async ()
 		assert.equal(registrations[0]?.name, "shared-aperture");
 		assert.equal(registration?.api, "anthropic-messages");
 		assert.equal(registration?.models[0]?.api, "anthropic-messages");
+		assert.equal(registration?.models[0]?.name, "claude-sonnet-4 (provider-1)");
 		assert.equal(registration?.models[0]?.reasoning, true);
 		assert.deepEqual(registration?.models[0]?.input, ["text"]);
 		assert.equal(registration?.models[0]?.contextWindow, 200000);
@@ -353,6 +354,7 @@ test("runtime builds registration from config and model overrides", async () => 
 		assert.equal(registrations.length, 1);
 		assert.equal(registrations[0]?.name, "custom-aperture");
 		assert.equal(registrations[0]?.registration.api, "openai-responses");
+		assert.equal(registrations[0]?.registration.models[0]?.name, "openai/gpt-5 (openai)");
 		assert.equal(registrations[0]?.registration.models[0]?.api, "openai-responses");
 		assert.equal(registrations[0]?.registration.models[0]?.contextWindow, 128000);
 		assert.equal(registrations[0]?.registration.models[0]?.maxTokens, 32000);
@@ -470,7 +472,9 @@ test("runtime splits mixed API models into separate provider registrations", asy
 
 		const registrations: Array<{
 			name: string;
-			registration: unknown;
+			registration: Awaited<
+				ReturnType<typeof runtime.buildRegistration>
+			>["registrations"][number]["registration"];
 		}> = [];
 
 		await runtime.sync({
@@ -483,6 +487,103 @@ test("runtime splits mixed API models into separate provider registrations", asy
 			registrations.map((entry) => entry.name).sort(),
 			["aperture-gateway-anthropic", "aperture-gateway-openai"].sort()
 		);
+		assert.equal(
+			registrations.find((entry) => entry.name === "aperture-gateway-anthropic")?.registration
+				.models[0]?.name,
+			"MiniMax-M2.7-highspeed (minimax)"
+		);
+		assert.equal(
+			registrations.find((entry) => entry.name === "aperture-gateway-openai")?.registration
+				.models[0]?.name,
+			"MiniMax-M2.5 (alibaba)"
+		);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("runtime can omit source provider labels from model names", async () => {
+	const originalFetch = globalThis.fetch;
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "MiniMax-M2.7-highspeed",
+							metadata: {
+								provider: {
+									id: "minimax",
+									name: "Minimax Coding Plan",
+									description: "Minimax Coding Plan",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://gateway.example/aperture/config") {
+			return new Response(
+				JSON.stringify({
+					config: `{
+						"providers": {
+							"minimax": {
+								"compatibility": {
+									"openai_chat": false,
+									"anthropic_messages": true,
+									"openai_responses": false
+								}
+							}
+						}
+					}`,
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(
+				JSON.stringify({
+					"minimax-coding-plan": {
+						id: "minimax-coding-plan",
+						name: "MiniMax Coding Plan",
+						models: {
+							"MiniMax-M2.7-highspeed": {
+								id: "MiniMax-M2.7-highspeed",
+								reasoning: true,
+								modalities: { input: ["text"] },
+								limit: { context: 204800, output: 131072 },
+							},
+						},
+					},
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		const runtime = createApertureProviderRuntime({
+			providerName: "aperture-gateway",
+			baseUrl: "https://gateway.example/v1",
+			modelsDev: {
+				url: "https://catalog.example/models.dev.json",
+			},
+			resolution: {
+				providerLabelInName: false,
+			},
+		});
+
+		const { registrations } = await runtime.buildRegistration();
+		assert.equal(registrations[0]?.registration.models[0]?.name, "MiniMax-M2.7-highspeed");
 	} finally {
 		globalThis.fetch = originalFetch;
 	}
