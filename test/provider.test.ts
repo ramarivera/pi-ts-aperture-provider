@@ -24,12 +24,14 @@ test("session tracking helper appends Pi session_id header", () => {
 	});
 });
 
-test("session tracked stream wrapper forwards session_id to provider headers", () => {
+test("session tracked anthropic stream forwards session header and metadata", () => {
 	let receivedHeaders: Record<string, string> | undefined;
+	let receivedMetadata: Record<string, unknown> | undefined;
 
 	const streamSimple = createSessionTrackedStreamSimple("anthropic-messages", {
 		anthropic: (_model, _context, options) => {
 			receivedHeaders = options?.headers;
+			receivedMetadata = options?.metadata;
 			return {} as never;
 		},
 		openaiCompletions: () => {
@@ -49,6 +51,44 @@ test("session tracked stream wrapper forwards session_id to provider headers", (
 		"x-test": "true",
 		session_id: "session-456",
 	});
+	assert.deepEqual(receivedMetadata, {
+		user_id: JSON.stringify({
+			device_id: "pi-ts-aperture-provider",
+			account_uuid: "",
+			session_id: "session-456",
+		}),
+	});
+});
+
+test("session tracked openai stream keeps metadata unchanged", () => {
+	let receivedHeaders: Record<string, string> | undefined;
+	let receivedMetadata: Record<string, unknown> | undefined;
+
+	const streamSimple = createSessionTrackedStreamSimple("openai-responses", {
+		anthropic: () => {
+			throw new Error("unexpected anthropic stream");
+		},
+		openaiCompletions: () => {
+			throw new Error("unexpected openai-completions stream");
+		},
+		openaiResponses: (_model, _context, options) => {
+			receivedHeaders = options?.headers;
+			receivedMetadata = options?.metadata;
+			return {} as never;
+		},
+	});
+
+	streamSimple({ api: "openai-responses" } as never, { messages: [] } as never, {
+		sessionId: "session-789",
+		headers: { "x-test": "true" },
+		metadata: { trace: "keep-me" },
+	});
+
+	assert.deepEqual(receivedHeaders, {
+		"x-test": "true",
+		session_id: "session-789",
+	});
+	assert.deepEqual(receivedMetadata, { trace: "keep-me" });
 });
 
 test("runtime resolves api type from provider metadata and models.dev", async () => {

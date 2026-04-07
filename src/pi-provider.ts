@@ -22,6 +22,7 @@ export type PiProviderRegistration = ProviderRegistration & {
 };
 
 const SESSION_ID_HEADER = "session_id";
+const ANTHROPIC_SESSION_DEVICE_ID = "pi-ts-aperture-provider";
 
 const DEFAULT_STREAM_RESOLVER: StreamResolver = {
 	anthropic: streamSimpleAnthropic,
@@ -43,7 +44,22 @@ export function attachSessionTrackingHeaders(
 	};
 }
 
+function attachAnthropicSessionTrackingMetadata(
+	metadata: SimpleStreamOptions["metadata"] | undefined,
+	sessionId: string
+): SimpleStreamOptions["metadata"] {
+	return {
+		...(metadata ?? {}),
+		user_id: JSON.stringify({
+			device_id: ANTHROPIC_SESSION_DEVICE_ID,
+			account_uuid: "",
+			session_id: sessionId,
+		}),
+	};
+}
+
 function withSessionTracking(
+	api: ProviderApi,
 	options: SimpleStreamOptions | undefined
 ): SimpleStreamOptions | undefined {
 	if (!options?.sessionId) {
@@ -53,6 +69,10 @@ function withSessionTracking(
 	return {
 		...options,
 		headers: attachSessionTrackingHeaders(options.headers, options.sessionId),
+		metadata:
+			api === "anthropic-messages"
+				? attachAnthropicSessionTrackingMetadata(options.metadata, options.sessionId)
+				: options.metadata,
 	};
 }
 
@@ -66,21 +86,21 @@ export function createSessionTrackedStreamSimple(
 				resolveStream.anthropic(
 					model as Model<"anthropic-messages">,
 					context,
-					withSessionTracking(options)
+					withSessionTracking("anthropic-messages", options)
 				)) as PiSimpleStream;
 		case "openai-completions":
 			return ((model, context, options) =>
 				resolveStream.openaiCompletions(
 					model as Model<"openai-completions">,
 					context,
-					withSessionTracking(options)
+					withSessionTracking("openai-completions", options)
 				)) as PiSimpleStream;
 		case "openai-responses":
 			return ((model, context, options) =>
 				resolveStream.openaiResponses(
 					model as Model<"openai-responses">,
 					context,
-					withSessionTracking(options)
+					withSessionTracking("openai-responses", options)
 				)) as PiSimpleStream;
 	}
 }

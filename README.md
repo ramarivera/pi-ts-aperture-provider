@@ -137,3 +137,9 @@ Publish with:
 ```bash
 npm publish
 ```
+
+For prereleases (for example `0.2.4-beta.0`), publish with:
+
+```bash
+npm publish --tag beta
+```
