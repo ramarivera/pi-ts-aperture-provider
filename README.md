@@ -1,4 +1,4 @@
-# `pi-ts-aperture-provider`
+# `@ramarivera/pi-ts-aperture-provider`
 
 Reusable aperture-provider logic extracted from a Pi extension so different users can share the same codebase while keeping instance-specific details in config.
 
@@ -45,7 +45,10 @@ If models.dev does not know a model and you do not provide an override, registra
 ## Core usage
 
 ```ts
-import { createApertureProviderRuntime, loadApertureProviderConfig } from "pi-ts-aperture-provider";
+import {
+  createApertureProviderRuntime,
+  loadApertureProviderConfig,
+} from "@ramarivera/pi-ts-aperture-provider";
 
 const config = await loadApertureProviderConfig(new URL("./aperture-provider.config.json", import.meta.url));
 const runtime = createApertureProviderRuntime(config);
@@ -63,7 +66,10 @@ The repo intentionally keeps the core Pi-agnostic. A thin local Pi extension can
 
 ```ts
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { createApertureProviderRuntime, loadApertureProviderConfig } from "pi-ts-aperture-provider";
+import {
+  createApertureProviderRuntime,
+  loadApertureProviderConfig,
+} from "@ramarivera/pi-ts-aperture-provider";
 
 const configPromise = loadApertureProviderConfig(new URL("./aperture-provider.config.json", import.meta.url));
 
@@ -85,3 +91,30 @@ export default function (pi: ExtensionAPI) {
 - [`src/models-dev.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/models-dev.ts)
 - [`src/provider.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/src/provider.ts)
 - [`test/provider.test.ts`](/Users/ramarivera/dev/pi-ts-aperture-provider/test/provider.test.ts)
+
+## Publishing
+
+The package is configured to publish to the npm registry as `@ramarivera/pi-ts-aperture-provider`.
+
+Before publishing:
+
+```bash
+corepack yarn install
+corepack yarn run check
+corepack yarn test
+corepack yarn typecheck
+corepack yarn build
+npm whoami
+```
+
+Publish with:
+
+```bash
+npm publish
+```
+
+`package.json` already sets:
+
+- `name: "@ramarivera/pi-ts-aperture-provider"`
+- `publishConfig.registry: "https://registry.npmjs.org/"`
+- `publishConfig.access: "public"`

@@ -1,10 +1,14 @@
 {
-	"name": "pi-ts-aperture-provider",
+	"name": "@ramarivera/pi-ts-aperture-provider",
 	"version": "0.1.0",
-	"private": true,
+	"private": false,
 	"packageManager": "yarn@1.22.22",
 	"description": "Config-driven aperture provider extraction for Pi-compatible extensions.",
 	"type": "module",
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/ramarivera/pi-ts-aperture-provider.git"
@@ -45,6 +49,6 @@
 		"@types/node": "latest",
 		"tsx": "latest",
 		"tsup": "8.5.1",
-		"typescript": "latest"
+		"typescript": "5.9.3"
 	}
 }
