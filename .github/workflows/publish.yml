@@ -66,4 +66,4 @@ jobs:
 
       - name: Publish to npm
         if: steps.registry.outputs.should_publish == 'true'
-        run: npm publish --provenance
+        run: npm publish
