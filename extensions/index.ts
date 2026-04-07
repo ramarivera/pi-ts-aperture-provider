@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 import {
 	createApertureProviderRuntime,
 	loadResolvedApertureProviderConfig,
+	toPiProviderRegistration,
 } from "../dist/index.js";
 
 const PACKAGE_ROOT = new URL("../", import.meta.url);
@@ -21,7 +22,7 @@ async function syncProvider(
 	await runtime.sync(
 		{
 			registerProvider(name, registration) {
-				pi.registerProvider(name, registration as never);
+				pi.registerProvider(name, toPiProviderRegistration(registration) as never);
 			},
 		},
 		ctx as never,

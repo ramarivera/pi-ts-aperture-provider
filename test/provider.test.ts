@@ -5,13 +5,51 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+	attachSessionTrackingHeaders,
 	createApertureProviderRuntime,
+	createSessionTrackedStreamSimple,
 	defaultApertureProviderConfigSearchPaths,
 	defineApertureProviderConfig,
 	enrichApertureModelMetadata,
 	loadResolvedApertureProviderConfig,
 	resolveApertureProviderConfigPath,
 } from "../src/index";
+
+test("session tracking helper appends Pi session_id header", () => {
+	assert.deepEqual(attachSessionTrackingHeaders(undefined, undefined), undefined);
+	assert.deepEqual(attachSessionTrackingHeaders({ foo: "bar" }, undefined), { foo: "bar" });
+	assert.deepEqual(attachSessionTrackingHeaders({ foo: "bar" }, "session-123"), {
+		foo: "bar",
+		session_id: "session-123",
+	});
+});
+
+test("session tracked stream wrapper forwards session_id to provider headers", () => {
+	let receivedHeaders: Record<string, string> | undefined;
+
+	const streamSimple = createSessionTrackedStreamSimple("anthropic-messages", {
+		anthropic: (_model, _context, options) => {
+			receivedHeaders = options?.headers;
+			return {} as never;
+		},
+		openaiCompletions: () => {
+			throw new Error("unexpected openai-completions stream");
+		},
+		openaiResponses: () => {
+			throw new Error("unexpected openai-responses stream");
+		},
+	});
+
+	streamSimple({ api: "anthropic-messages" } as never, { messages: [] } as never, {
+		sessionId: "session-456",
+		headers: { "x-test": "true" },
+	});
+
+	assert.deepEqual(receivedHeaders, {
+		"x-test": "true",
+		session_id: "session-456",
+	});
+});
 
 test("runtime resolves api type from provider metadata and models.dev", async () => {
 	const config = defineApertureProviderConfig({

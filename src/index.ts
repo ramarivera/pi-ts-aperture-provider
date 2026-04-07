@@ -8,6 +8,12 @@ export {
 	resolveApertureProviderConfigPath,
 } from "./config";
 export { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev";
+export {
+	attachSessionTrackingHeaders,
+	createSessionTrackedStreamSimple,
+	type PiProviderRegistration,
+	toPiProviderRegistration,
+} from "./pi-provider";
 export { createApertureProviderRuntime } from "./provider";
 export type {
 	ApertureModel,
