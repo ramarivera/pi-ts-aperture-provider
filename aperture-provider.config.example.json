@@ -14,21 +14,18 @@
       ]
     }
   },
-  "heuristics": {
-    "defaultApi": "openai-completions",
+  "resolution": {
+    "requireModelsDevForCapabilities": true,
     "providerLabelInName": true,
     "apiRules": [
       {
         "match": [
-          "anthropic",
           "/v1/messages"
         ],
         "api": "anthropic-messages"
       },
       {
         "match": [
-          "responses",
-          "openai-responses",
           "/v1/responses"
         ],
         "api": "openai-responses"

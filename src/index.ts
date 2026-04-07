@@ -4,18 +4,6 @@ export {
 	defineApertureProviderConfig,
 	loadApertureProviderConfig,
 } from "./config.js";
-export {
-	dedupeModels,
-	findModelOverride,
-	hasAperturePricing,
-	inferApi,
-	inferCompat,
-	inferContextWindow,
-	inferCost,
-	inferInput,
-	inferMaxTokens,
-	inferReasoning,
-} from "./heuristics.js";
 export { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev.js";
 export { createApertureProviderRuntime } from "./provider.js";
 export type {
@@ -33,7 +21,6 @@ export type {
 	ModelsDevIndex,
 	ModelsDevModel,
 	ModelsDevProviderCatalog,
-	NumericRule,
 	ProviderApi,
 	ProviderCompat,
 	ProviderCost,

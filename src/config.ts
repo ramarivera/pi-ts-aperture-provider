@@ -28,40 +28,18 @@ export const DEFAULT_CONFIG: ApertureProviderConfig = {
 		cacheTtlMs: 60 * 60 * 1000,
 		providerAliases: DEFAULT_PROVIDER_ALIASES,
 	},
-	heuristics: {
-		defaultApi: "openai-completions",
+	resolution: {
+		requireModelsDevForCapabilities: true,
 		providerLabelInName: true,
 		apiRules: [
 			{
-				match: ["anthropic", "/v1/messages"],
+				match: ["/v1/messages"],
 				api: "anthropic-messages",
 			},
 			{
-				match: ["responses", "openai-responses", "/v1/responses"],
+				match: ["/v1/responses"],
 				api: "openai-responses",
 			},
-		],
-		reasoningTokens: [
-			"gpt-5",
-			"claude",
-			"glm",
-			"kimi",
-			"qwen",
-			"minimax",
-			"codex",
-			"opus",
-			"sonnet",
-			"haiku",
-		],
-		imageTokens: ["vision", "-vl"],
-		contextWindowRules: [
-			{ match: ["gpt-5"], value: 128000 },
-			{ match: ["claude"], value: 200000 },
-			{ match: ["glm", "qwen", "kimi"], value: 262144 },
-		],
-		maxTokensRules: [
-			{ match: ["gpt-5"], value: 32768 },
-			{ match: ["claude"], value: 16384 },
 		],
 	},
 	modelOverrides: {},
@@ -114,17 +92,13 @@ export function defineApertureProviderConfig(
 				input.modelsDev?.providerAliases
 			),
 		},
-		heuristics: {
-			defaultApi: input.heuristics?.defaultApi ?? DEFAULT_CONFIG.heuristics.defaultApi,
+		resolution: {
+			requireModelsDevForCapabilities:
+				input.resolution?.requireModelsDevForCapabilities ??
+				DEFAULT_CONFIG.resolution.requireModelsDevForCapabilities,
 			providerLabelInName:
-				input.heuristics?.providerLabelInName ?? DEFAULT_CONFIG.heuristics.providerLabelInName,
-			apiRules: input.heuristics?.apiRules ?? DEFAULT_CONFIG.heuristics.apiRules,
-			reasoningTokens:
-				input.heuristics?.reasoningTokens ?? DEFAULT_CONFIG.heuristics.reasoningTokens,
-			imageTokens: input.heuristics?.imageTokens ?? DEFAULT_CONFIG.heuristics.imageTokens,
-			contextWindowRules:
-				input.heuristics?.contextWindowRules ?? DEFAULT_CONFIG.heuristics.contextWindowRules,
-			maxTokensRules: input.heuristics?.maxTokensRules ?? DEFAULT_CONFIG.heuristics.maxTokensRules,
+				input.resolution?.providerLabelInName ?? DEFAULT_CONFIG.resolution.providerLabelInName,
+			apiRules: input.resolution?.apiRules ?? DEFAULT_CONFIG.resolution.apiRules,
 		},
 		modelOverrides: mergeModelOverrides(DEFAULT_CONFIG.modelOverrides, input.modelOverrides),
 	};

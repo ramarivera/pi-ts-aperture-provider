@@ -2,17 +2,19 @@ export type ProviderApi = "openai-completions" | "openai-responses" | "anthropic
 
 export type ProviderInput = "text" | "image";
 
+export type ApertureProviderMetadata = {
+	id?: string;
+	name?: string;
+	description?: string;
+};
+
 export type ApertureModel = {
 	id: string;
 	object?: string;
 	created?: number;
 	owned_by?: string;
 	metadata?: {
-		provider?: {
-			id?: string;
-			name?: string;
-			description?: string;
-		};
+		provider?: ApertureProviderMetadata;
 	};
 	pricing?: Record<string, string>;
 };
@@ -119,11 +121,6 @@ export type ApiRule = {
 	api: ProviderApi;
 };
 
-export type NumericRule = {
-	match: string[];
-	value: number;
-};
-
 export type ModelOverride = Partial<{
 	name: string;
 	api: ProviderApi;
@@ -146,14 +143,10 @@ export type ApertureProviderConfig = {
 		cacheTtlMs: number;
 		providerAliases: Record<string, string[]>;
 	};
-	heuristics: {
-		defaultApi: ProviderApi;
+	resolution: {
+		requireModelsDevForCapabilities: boolean;
 		providerLabelInName: boolean;
 		apiRules: ApiRule[];
-		reasoningTokens: string[];
-		imageTokens: string[];
-		contextWindowRules: NumericRule[];
-		maxTokensRules: NumericRule[];
 	};
 	modelOverrides: Record<string, ModelOverride>;
 };
@@ -164,7 +157,7 @@ export type ApertureProviderConfigInput = Partial<{
 	apiKey: string;
 	modelsPath: string;
 	modelsDev: Partial<ApertureProviderConfig["modelsDev"]>;
-	heuristics: Partial<ApertureProviderConfig["heuristics"]>;
+	resolution: Partial<ApertureProviderConfig["resolution"]>;
 	modelOverrides: Record<string, ModelOverride>;
 }>;
 

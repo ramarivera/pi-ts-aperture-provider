@@ -1,31 +1,117 @@
 import { DEFAULT_CONFIG, defineApertureProviderConfig } from "./config.js";
-import {
-	dedupeModels,
-	findModelOverride,
-	hasAperturePricing,
-	inferApi,
-	inferCompat,
-	inferContextWindow,
-	inferCost,
-	inferInput,
-	inferMaxTokens,
-	inferReasoning,
-} from "./heuristics.js";
 import { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev.js";
 import type {
 	ApertureModel,
 	ApertureModelsResponse,
 	ApertureProviderConfig,
 	ApertureProviderConfigInput,
+	ApertureProviderMetadata,
 	ApertureProviderRuntime,
 	BuildRegistrationResult,
 	ModelsDevApiResponse,
 	ModelsDevIndex,
+	ProviderApi,
+	ProviderCost,
+	ProviderInput,
 	ProviderModel,
 } from "./types.js";
 
 function joinUrl(baseUrl: string, path: string): string {
 	return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}
+
+function normalizeValue(value: string | null | undefined): string {
+	return (value ?? "").toLowerCase().trim();
+}
+
+function inferCost(model: ApertureModel): ProviderCost {
+	const pricing = model.pricing ?? {};
+	return {
+		input: Number(pricing.input ?? 0) * 1_000_000,
+		output: Number(pricing.output ?? 0) * 1_000_000,
+		cacheRead: Number(pricing.input_cache_read ?? 0) * 1_000_000,
+		cacheWrite: Number(pricing.input_cache_write ?? 0) * 1_000_000,
+	};
+}
+
+function hasAperturePricing(model: ApertureModel): boolean {
+	const pricing = model.pricing;
+	return pricing != null && Object.keys(pricing).length > 0;
+}
+
+function inferCompat(api: ProviderApi) {
+	if (api === "openai-completions" || api === "openai-responses") {
+		return {
+			supportsDeveloperRole: false,
+		};
+	}
+
+	return undefined;
+}
+
+function providerHaystack(provider: ApertureProviderMetadata | undefined): string {
+	return [provider?.id, provider?.name, provider?.description].map(normalizeValue).join(" ");
+}
+
+function findModelOverride(modelId: string, overrides: ApertureProviderConfig["modelOverrides"]) {
+	return overrides[modelId] ?? overrides[normalizeValue(modelId)];
+}
+
+function resolveApiFromProviderMetadata(
+	model: ApertureModel,
+	config: ApertureProviderConfig
+): ProviderApi {
+	const haystack = providerHaystack(model.metadata?.provider);
+
+	for (const rule of config.resolution.apiRules) {
+		if (rule.match.some((token) => haystack.includes(normalizeValue(token)))) {
+			return rule.api;
+		}
+	}
+
+	if (haystack.includes("/v1/chat/completions")) {
+		return "openai-completions";
+	}
+
+	throw new Error(
+		`Could not resolve API type for model "${model.id}" from provider metadata: ${JSON.stringify(model.metadata?.provider ?? {})}`
+	);
+}
+
+function dedupeModels(models: ApertureModel[], config: ApertureProviderConfig): ApertureModel[] {
+	const seen = new Set<string>();
+	const deduped: ApertureModel[] = [];
+
+	for (const model of models) {
+		const api = resolveApiFromProviderMetadata(model, config);
+		const key = `${api}:${model.id}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		deduped.push(model);
+	}
+
+	return deduped;
+}
+
+function requireCapability<T>(
+	model: ApertureModel,
+	field: string,
+	overrideValue: T | undefined,
+	modelsDevValue: T | null,
+	requireModelsDev: boolean
+): T {
+	if (overrideValue !== undefined) return overrideValue;
+	if (modelsDevValue !== null) return modelsDevValue;
+
+	if (requireModelsDev) {
+		throw new Error(
+			`Missing required "${field}" metadata for model "${model.id}". Add a model override or ensure models.dev has this model.`
+		);
+	}
+
+	throw new Error(
+		`Model "${model.id}" cannot be registered without "${field}" metadata. Add a model override for this model.`
+	);
 }
 
 function toProviderModel(
@@ -34,7 +120,7 @@ function toProviderModel(
 	modelsDevIndex: ModelsDevIndex | null
 ): ProviderModel {
 	const override = findModelOverride(model.id, config.modelOverrides);
-	const api = override?.api ?? inferApi(model, config);
+	const api = override?.api ?? resolveApiFromProviderMetadata(model, config);
 	const providerLabel = model.metadata?.provider?.name?.trim();
 	const compat = override?.compat ?? inferCompat(api);
 	const enriched = enrichApertureModelMetadata(model, modelsDevIndex);
@@ -44,16 +130,39 @@ function toProviderModel(
 		id: model.id,
 		name:
 			override?.name ??
-			(config.heuristics.providerLabelInName && providerLabel
+			(config.resolution.providerLabelInName && providerLabel
 				? `${model.id} (${providerLabel})`
 				: model.id),
 		api,
-		reasoning: override?.reasoning ?? enriched.reasoning ?? inferReasoning(model.id, config),
-		input: override?.input ?? enriched.input ?? inferInput(model.id, config),
+		reasoning: requireCapability(
+			model,
+			"reasoning",
+			override?.reasoning,
+			enriched.reasoning,
+			config.resolution.requireModelsDevForCapabilities
+		),
+		input: requireCapability<ProviderInput[]>(
+			model,
+			"input",
+			override?.input,
+			enriched.input,
+			config.resolution.requireModelsDevForCapabilities
+		),
 		cost: override?.cost ?? cost,
-		contextWindow:
-			override?.contextWindow ?? enriched.contextWindow ?? inferContextWindow(model.id, config),
-		maxTokens: override?.maxTokens ?? enriched.maxTokens ?? inferMaxTokens(model.id, config),
+		contextWindow: requireCapability(
+			model,
+			"contextWindow",
+			override?.contextWindow,
+			enriched.contextWindow,
+			config.resolution.requireModelsDevForCapabilities
+		),
+		maxTokens: requireCapability(
+			model,
+			"maxTokens",
+			override?.maxTokens,
+			enriched.maxTokens,
+			config.resolution.requireModelsDevForCapabilities
+		),
 		...(compat ? { compat } : {}),
 	};
 }
@@ -176,7 +285,7 @@ export function createApertureProviderRuntime(
 			registration: {
 				baseUrl: config.baseUrl,
 				apiKey: config.apiKey,
-				api: config.heuristics.defaultApi,
+				api: "openai-completions",
 				models,
 			},
 			summary,

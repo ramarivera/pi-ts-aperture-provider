@@ -6,7 +6,7 @@ Reusable aperture-provider logic extracted from a Pi extension so different user
 
 - OpenAI-compatible `/models` gateway fetching
 - models.dev catalog indexing and metadata enrichment
-- API/model heuristics for Pi-style provider registrations
+- provider-metadata-driven API resolution for Pi-style provider registrations
 - Config-driven overrides for provider aliases and individual models
 
 ## What does not live here
@@ -29,9 +29,18 @@ Copy [`aperture-provider.config.example.json`](/Users/ramarivera/dev/pi-ts-apert
 - `baseUrl`
 - `apiKey`
 - `modelsDev.providerAliases`
+- `resolution.apiRules`
 - `modelOverrides`
 
 For Aperture, `baseUrl` should be the primary gateway root the extension uses everywhere, either via the fully qualified tailnet hostname or the MagicDNS name your setup exposes. In your current setup that means `https://aperture-ai.xalda-procyon.ts.net/v1`, and the models fetch resolves from that via `modelsPath`.
+
+This runtime no longer guesses capabilities from model IDs. It reads:
+
+- API type from Aperture provider metadata such as `/v1/messages`, `/v1/responses`, or `/v1/chat/completions`
+- pricing from the Aperture `/models` payload when present
+- reasoning, modalities, and token limits from models.dev or explicit `modelOverrides`
+
+If models.dev does not know a model and you do not provide an override, registration fails with a concrete missing-field error instead of inventing values.
 
 ## Core usage
 

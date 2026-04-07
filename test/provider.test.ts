@@ -5,27 +5,74 @@ import {
 	createApertureProviderRuntime,
 	defineApertureProviderConfig,
 	enrichApertureModelMetadata,
-	inferApi,
 } from "../src/index.js";
 
-test("inferApi uses config rules instead of Aperture-specific defaults", () => {
+test("runtime resolves api type from provider metadata and models.dev", async () => {
 	const config = defineApertureProviderConfig({
 		providerName: "shared-aperture",
 		baseUrl: "https://gateway.example/v1",
+		modelsDev: {
+			url: "https://catalog.example/models.dev.json",
+		},
 	});
 
-	const anthropicModel = {
-		id: "claude-sonnet-4",
-		metadata: {
-			provider: {
-				id: "anthropic",
-				name: "Anthropic",
-				description: "Anthropic via /v1/messages",
-			},
-		},
+	const originalFetch = globalThis.fetch;
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "claude-sonnet-4",
+							metadata: {
+								provider: {
+									id: "provider-1",
+									name: "Anthropic Gateway",
+									description: "Models exposed via /v1/messages",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(
+				JSON.stringify({
+					anthropic: {
+						id: "anthropic",
+						name: "Anthropic",
+						models: {
+							"claude-sonnet-4": {
+								id: "claude-sonnet-4",
+								reasoning: true,
+								modalities: { input: ["text"] },
+								limit: { context: 200000, output: 16384 },
+							},
+						},
+					},
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
 	};
 
-	assert.equal(inferApi(anthropicModel, config), "anthropic-messages");
+	try {
+		const runtime = createApertureProviderRuntime(config);
+		const { registration } = await runtime.buildRegistration();
+
+		assert.equal(registration.models[0]?.api, "anthropic-messages");
+		assert.equal(registration.models[0]?.reasoning, true);
+		assert.deepEqual(registration.models[0]?.input, ["text"]);
+		assert.equal(registration.models[0]?.contextWindow, 200000);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
 });
 
 test("models.dev enrichment matches provider aliases and normalized model ids", () => {
@@ -100,6 +147,7 @@ test("runtime builds registration from config and model overrides", async () => 
 								provider: {
 									id: "openai",
 									name: "OpenAI",
+									description: "OpenAI Responses via /v1/responses",
 								},
 							},
 						},
@@ -119,6 +167,9 @@ test("runtime builds registration from config and model overrides", async () => 
 							"gpt-5": {
 								id: "openai/gpt-5",
 								reasoning: true,
+								modalities: {
+									input: ["text"],
+								},
 								limit: {
 									context: 128000,
 									output: 16384,
@@ -161,9 +212,64 @@ test("runtime builds registration from config and model overrides", async () => 
 
 		assert.equal(registrations.length, 1);
 		assert.equal(registrations[0]?.name, "custom-aperture");
+		assert.equal(registrations[0]?.registration.models[0]?.api, "openai-responses");
 		assert.equal(registrations[0]?.registration.models[0]?.contextWindow, 128000);
 		assert.equal(registrations[0]?.registration.models[0]?.maxTokens, 32000);
 		assert.equal(runtime.getState().lastSyncSummary.includes("1 models"), true);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("runtime fails when capabilities are missing and no override exists", async () => {
+	const originalFetch = globalThis.fetch;
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "unknown-model",
+							metadata: {
+								provider: {
+									id: "provider-x",
+									name: "OpenAI Chat Gateway",
+									description: "Provider exposed via /v1/chat/completions",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(JSON.stringify({}), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		const runtime = createApertureProviderRuntime({
+			providerName: "strict-aperture",
+			baseUrl: "https://gateway.example/v1",
+			modelsDev: {
+				url: "https://catalog.example/models.dev.json",
+			},
+		});
+
+		await assert.rejects(
+			() => runtime.buildRegistration(),
+			/Missing required "reasoning" metadata/
+		);
 	} finally {
 		globalThis.fetch = originalFetch;
 	}
