@@ -10,6 +10,7 @@ import type {
 	BuildRegistrationResult,
 	ModelsDevApiResponse,
 	ModelsDevIndex,
+	NamedProviderRegistration,
 	ProviderApi,
 	ProviderCost,
 	ProviderInput,
@@ -254,6 +255,38 @@ function dedupeModels(
 	}
 
 	return deduped;
+}
+
+const PROVIDER_API_SUFFIX: Record<ProviderApi, string> = {
+	"openai-completions": "openai",
+	"openai-responses": "responses",
+	"anthropic-messages": "anthropic",
+};
+
+function buildProviderRegistrations(
+	config: ApertureProviderConfig,
+	models: ProviderModel[]
+): NamedProviderRegistration[] {
+	const grouped = new Map<ProviderApi, ProviderModel[]>();
+
+	for (const model of models) {
+		const existing = grouped.get(model.api) ?? [];
+		existing.push(model);
+		grouped.set(model.api, existing);
+	}
+
+	const entries = [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right));
+	const useSuffixes = entries.length > 1;
+
+	return entries.map(([api, apiModels]) => ({
+		name: useSuffixes ? `${config.providerName}-${PROVIDER_API_SUFFIX[api]}` : config.providerName,
+		registration: {
+			baseUrl: config.baseUrl,
+			apiKey: config.apiKey,
+			api,
+			models: apiModels,
+		},
+	}));
 }
 
 function requireCapability<T>(
@@ -503,14 +536,10 @@ export function createApertureProviderRuntime(
 		const summary = `${models.length} models (${Object.entries(apiCounts)
 			.map(([api, count]) => `${count} ${api}`)
 			.join(", ")}; ${modelsDevSummary})`;
+		const registrations = buildProviderRegistrations(config, models);
 
 		return {
-			registration: {
-				baseUrl: config.baseUrl,
-				apiKey: config.apiKey,
-				api: "openai-completions",
-				models,
-			},
+			registrations,
 			summary,
 			modelsDevSummary,
 		};
@@ -526,8 +555,10 @@ export function createApertureProviderRuntime(
 		}
 
 		syncPromise = (async () => {
-			const { registration, summary } = await buildRegistration(options);
-			registrar.registerProvider(config.providerName, registration);
+			const { registrations, summary } = await buildRegistration(options);
+			for (const entry of registrations) {
+				registrar.registerProvider(entry.name, entry.registration);
+			}
 			lastSyncSummary = summary;
 			ctx?.ui?.notify(`${config.providerName} synced: ${summary}`, "success");
 		})()

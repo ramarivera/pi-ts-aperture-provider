@@ -70,12 +70,15 @@ test("runtime resolves api type from provider metadata and models.dev", async ()
 
 	try {
 		const runtime = createApertureProviderRuntime(config);
-		const { registration } = await runtime.buildRegistration();
+		const { registrations } = await runtime.buildRegistration();
+		const registration = registrations[0]?.registration;
 
-		assert.equal(registration.models[0]?.api, "anthropic-messages");
-		assert.equal(registration.models[0]?.reasoning, true);
-		assert.deepEqual(registration.models[0]?.input, ["text"]);
-		assert.equal(registration.models[0]?.contextWindow, 200000);
+		assert.equal(registrations[0]?.name, "shared-aperture");
+		assert.equal(registration?.api, "anthropic-messages");
+		assert.equal(registration?.models[0]?.api, "anthropic-messages");
+		assert.equal(registration?.models[0]?.reasoning, true);
+		assert.deepEqual(registration?.models[0]?.input, ["text"]);
+		assert.equal(registration?.models[0]?.contextWindow, 200000);
 	} finally {
 		globalThis.fetch = originalFetch;
 	}
@@ -156,9 +159,10 @@ test("runtime prefers aperture config compatibility over provider metadata hints
 				url: "https://catalog.example/models.dev.json",
 			},
 		});
-		const { registration } = await runtime.buildRegistration();
+		const { registrations } = await runtime.buildRegistration();
 
-		assert.equal(registration.models[0]?.api, "anthropic-messages");
+		assert.equal(registrations[0]?.registration.api, "anthropic-messages");
+		assert.equal(registrations[0]?.registration.models[0]?.api, "anthropic-messages");
 	} finally {
 		globalThis.fetch = originalFetch;
 	}
@@ -335,7 +339,9 @@ test("runtime builds registration from config and model overrides", async () => 
 
 		const registrations: Array<{
 			name: string;
-			registration: Awaited<ReturnType<typeof runtime.buildRegistration>>["registration"];
+			registration: Awaited<
+				ReturnType<typeof runtime.buildRegistration>
+			>["registrations"][number]["registration"];
 		}> = [];
 
 		await runtime.sync({
@@ -346,10 +352,137 @@ test("runtime builds registration from config and model overrides", async () => 
 
 		assert.equal(registrations.length, 1);
 		assert.equal(registrations[0]?.name, "custom-aperture");
+		assert.equal(registrations[0]?.registration.api, "openai-responses");
 		assert.equal(registrations[0]?.registration.models[0]?.api, "openai-responses");
 		assert.equal(registrations[0]?.registration.models[0]?.contextWindow, 128000);
 		assert.equal(registrations[0]?.registration.models[0]?.maxTokens, 32000);
 		assert.equal(runtime.getState().lastSyncSummary.includes("1 models"), true);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("runtime splits mixed API models into separate provider registrations", async () => {
+	const originalFetch = globalThis.fetch;
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+
+		if (url === "https://gateway.example/aperture/config") {
+			return new Response(
+				JSON.stringify({
+					config: `{
+						"providers": {
+							"minimax": {
+								"compatibility": {
+									"openai_chat": false,
+									"anthropic_messages": true,
+									"openai_responses": false
+								}
+							},
+							"alibaba": {
+								"compatibility": {
+									"openai_chat": true,
+									"anthropic_messages": false,
+									"openai_responses": false
+								}
+							}
+						}
+					}`,
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "MiniMax-M2.7-highspeed",
+							metadata: {
+								provider: {
+									id: "minimax",
+									name: "Minimax Coding Plan",
+									description: "Minimax Coding Plan",
+								},
+							},
+						},
+						{
+							id: "MiniMax-M2.5",
+							metadata: {
+								provider: {
+									id: "alibaba",
+									name: "Alibaba Coding Plan",
+									description: "Alibaba Coding Plan",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(
+				JSON.stringify({
+					"minimax-coding-plan": {
+						id: "minimax-coding-plan",
+						name: "MiniMax Coding Plan",
+						models: {
+							"MiniMax-M2.7-highspeed": {
+								id: "MiniMax-M2.7-highspeed",
+								reasoning: true,
+								modalities: { input: ["text"] },
+								limit: { context: 204800, output: 131072 },
+							},
+						},
+					},
+					alibaba: {
+						id: "alibaba",
+						name: "Alibaba",
+						models: {
+							"MiniMax-M2.5": {
+								id: "MiniMax-M2.5",
+								reasoning: true,
+								modalities: { input: ["text"] },
+								limit: { context: 200000, output: 8192 },
+							},
+						},
+					},
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		const runtime = createApertureProviderRuntime({
+			providerName: "aperture-gateway",
+			baseUrl: "https://gateway.example/v1",
+			modelsDev: {
+				url: "https://catalog.example/models.dev.json",
+			},
+		});
+
+		const registrations: Array<{
+			name: string;
+			registration: unknown;
+		}> = [];
+
+		await runtime.sync({
+			registerProvider(name, registration) {
+				registrations.push({ name, registration });
+			},
+		});
+
+		assert.deepEqual(
+			registrations.map((entry) => entry.name).sort(),
+			["aperture-gateway-anthropic", "aperture-gateway-openai"].sort()
+		);
 	} finally {
 		globalThis.fetch = originalFetch;
 	}

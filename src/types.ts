@@ -54,6 +54,11 @@ export type ProviderRegistration = {
 	models: ProviderModel[];
 };
 
+export type NamedProviderRegistration = {
+	name: string;
+	registration: ProviderRegistration;
+};
+
 export type ProviderRegistrar = {
 	registerProvider(name: string, registration: ProviderRegistration): void;
 };
@@ -162,7 +167,7 @@ export type ApertureProviderConfigInput = Partial<{
 }>;
 
 export type BuildRegistrationResult = {
-	registration: ProviderRegistration;
+	registrations: NamedProviderRegistration[];
 	summary: string;
 	modelsDevSummary: string;
 };
