@@ -34,19 +34,17 @@ This package is now Pi-installable.
 ### Super simple setup
 
 ```bash
-pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.2
-mkdir -p ~/.pi/agent
-cp aperture-provider.config.example.json ~/.pi/agent/aperture-provider.config.json
+pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.5
 ```
 
-That is enough for Pi to load the extension. Pi discovers the packaged extension from `package.json -> pi.extensions` and loads `extensions/index.ts` automatically.
+That is enough for Pi to load the extension. Pi discovers the packaged extension from `package.json -> pi.extensions` and loads `extensions/index.ts` automatically. If you do not provide your own config yet, the extension falls back to the bundled [`aperture-provider.config.example.json`](./aperture-provider.config.example.json) as a bootstrap default; most installs should still copy and customize that file.
 
 If you prefer to do it manually instead of `pi install`, add this to `~/.pi/agent/settings.json`:
 
 ```json
 {
   "packages": [
-    "npm:@ramarivera/pi-ts-aperture-provider@0.2.2"
+    "npm:@ramarivera/pi-ts-aperture-provider@0.2.5"
   ]
 }
 ```
@@ -59,6 +57,7 @@ Copy [`aperture-provider.config.example.json`](./aperture-provider.config.exampl
 2. `<project>/.pi/aperture-provider.config.json`
 3. `~/.pi/agent/aperture-provider.config.json`
 4. package-local `aperture-provider.config.json` next to the installed package (mainly useful for local development)
+5. bundled package fallback `aperture-provider.config.example.json` next to the installed package (used automatically when no higher-priority config exists)
 
 Example:
 
@@ -138,7 +137,7 @@ Publish with:
 npm publish
 ```
 
-For prereleases (for example `0.2.4-beta.0`), publish with:
+For prereleases (for example `0.2.5-beta.0`), publish with:
 
 ```bash
 npm publish --tag beta

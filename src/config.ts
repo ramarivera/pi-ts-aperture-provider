@@ -1,13 +1,18 @@
+import { existsSync, statSync } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ApertureProviderConfig, ApertureProviderConfigInput, ModelOverride } from "./types";
 
 const CONFIG_FILE_NAME = "aperture-provider.config.json";
+const EXAMPLE_CONFIG_FILE_NAME = "aperture-provider.config.example.json";
 const PROJECT_CONFIG_SUBPATH = `.pi/${CONFIG_FILE_NAME}`;
 const USER_CONFIG_SUBPATH = `.pi/agent/${CONFIG_FILE_NAME}`;
+
+// Cross-reference:
+//   - aperture-provider.config.example.json
 
 export const DEFAULT_PROVIDER_ALIASES: Record<string, string[]> = {
 	alibaba: ["alibaba", "alibaba-coding-plan", "alibaba-coding-plan-cn", "alibaba-cn"],
@@ -138,6 +143,35 @@ async function pathExists(path: string): Promise<boolean> {
 	}
 }
 
+function resolvePackageRoot(packageRoot: string | URL | undefined): string | undefined {
+	if (!packageRoot) {
+		return undefined;
+	}
+
+	const resolvedPath =
+		typeof packageRoot === "string" ? resolve(packageRoot) : resolve(fileURLToPath(packageRoot));
+	const fallbackRoot =
+		typeof packageRoot === "string"
+			? resolvedPath
+			: existsSync(resolvedPath) && statSync(resolvedPath).isDirectory()
+				? resolvedPath
+				: dirname(resolvedPath);
+	let current = fallbackRoot;
+
+	while (true) {
+		if (existsSync(join(current, "package.json"))) {
+			return current;
+		}
+
+		const parent = dirname(current);
+		if (parent === current) {
+			return fallbackRoot;
+		}
+
+		current = parent;
+	}
+}
+
 export function defaultApertureProviderConfigSearchPaths(options?: {
 	cwd?: string;
 	packageRoot?: string | URL;
@@ -145,17 +179,14 @@ export function defaultApertureProviderConfigSearchPaths(options?: {
 }): string[] {
 	const cwd = options?.cwd ?? process.cwd();
 	const env = options?.env ?? process.env;
-	const packageRoot = options?.packageRoot
-		? typeof options.packageRoot === "string"
-			? options.packageRoot
-			: dirname(fileURLToPath(options.packageRoot))
-		: undefined;
+	const packageRoot = resolvePackageRoot(options?.packageRoot);
 
 	const candidates = [
 		env.PI_APERTURE_PROVIDER_CONFIG,
 		resolve(cwd, PROJECT_CONFIG_SUBPATH),
 		resolve(homedir(), USER_CONFIG_SUBPATH),
 		packageRoot ? resolve(packageRoot, CONFIG_FILE_NAME) : undefined,
+		packageRoot ? resolve(packageRoot, EXAMPLE_CONFIG_FILE_NAME) : undefined,
 	].filter((value): value is string => typeof value === "string" && value !== "");
 
 	return [...new Set(candidates)];
