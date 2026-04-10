@@ -83,7 +83,7 @@ async function syncProvider(
 				pi.registerProvider(name, toPiProviderRegistration(registration) as never);
 			},
 		},
-		ctx as never,
+		undefined as never,
 		{ forceRefreshModelsDev },
 	);
 
@@ -113,7 +113,12 @@ export default function apertureProviderExtension(pi: ExtensionAPI) {
 	pi.registerCommand("aperture-gateway-status", {
 		description: "Show Aperture gateway sync status",
 		handler: async (_args, ctx) => {
-			const runtime = await syncProvider(pi, ctx);
+			const runtime = await syncProvider(pi, ctx).catch((error) => {
+				reportSyncFailure(ctx as ExtensionCommandContext, error);
+			});
+			if (!runtime) {
+				return;
+			}
 			const state = runtime.getState();
 			ctx.ui.notify(
 				`Aperture gateway: ${state.lastSyncSummary}; models.dev: ${state.lastModelsDevSummary}`,
