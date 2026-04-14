@@ -13,6 +13,7 @@ import {
 	defineApertureProviderConfig,
 	enrichApertureModelMetadata,
 	loadResolvedApertureProviderConfig,
+	registerApertureProviders,
 	resolveApertureProviderConfigPath,
 } from "../src/index";
 
@@ -440,6 +441,118 @@ test("runtime builds registration from config and model overrides", async () => 
 		assert.equal(registrations[0]?.registration.models[0]?.contextWindow, 128000);
 		assert.equal(registrations[0]?.registration.models[0]?.maxTokens, 32000);
 		assert.equal(runtime.getState().lastSyncSummary.includes("1 models"), true);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("registerApertureProviders awaits initial provider registration", async () => {
+	const originalFetch = globalThis.fetch;
+	const registrations: Array<{
+		name: string;
+		registration: { api: string; models: Array<{ id: string }> };
+	}> = [];
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+
+		if (url === "https://gateway.example/aperture/config") {
+			return new Response(
+				JSON.stringify({
+					config: `{
+						"providers": {
+							"provider-1": {
+								"compatibility": {
+									"openai_chat": false,
+									"anthropic_messages": true,
+									"openai_responses": false
+								}
+							}
+						}
+					}`,
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "claude-sonnet-4",
+							metadata: {
+								provider: {
+									id: "provider-1",
+									name: "Anthropic Gateway",
+									description: "Models exposed via /v1/messages",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(
+				JSON.stringify({
+					anthropic: {
+						id: "anthropic",
+						name: "Anthropic",
+						models: {
+							"claude-sonnet-4": {
+								id: "claude-sonnet-4",
+								reasoning: true,
+								modalities: { input: ["text"] },
+								limit: { context: 200000, output: 16384 },
+							},
+						},
+					},
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		await registerApertureProviders(
+			{
+				registerProvider(name, registration) {
+					registrations.push({
+						name,
+						registration: {
+							api: registration.api,
+							models: registration.models.map((model) => ({ id: model.id })),
+						},
+					});
+				},
+			},
+			{
+				cwd: process.cwd(),
+				packageRoot: new URL("../", import.meta.url),
+				loadConfig: async () => ({
+					path: "/tmp/aperture-provider.config.json",
+					config: defineApertureProviderConfig({
+						providerName: "aperture-gateway",
+						baseUrl: "https://gateway.example/v1",
+						modelsDev: {
+							url: "https://catalog.example/models.dev.json",
+						},
+					}),
+				}),
+			}
+		);
+
+		assert.deepEqual(
+			registrations.map((entry) => entry.name),
+			["aperture-gateway"]
+		);
+		assert.equal(registrations[0]?.registration.api, "anthropic-messages");
+		assert.deepEqual(registrations[0]?.registration.models, [{ id: "claude-sonnet-4" }]);
 	} finally {
 		globalThis.fetch = originalFetch;
 	}

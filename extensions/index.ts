@@ -1,10 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 
-import {
-	createApertureProviderRuntime,
-	loadResolvedApertureProviderConfig,
-	toPiProviderRegistration,
-} from "../dist/index.js";
+import { registerApertureProviders } from "../dist/index.js";
 
 const PACKAGE_ROOT = new URL("../", import.meta.url);
 
@@ -71,27 +67,22 @@ async function syncProvider(
 	ctx?: ExtensionCommandContext,
 	forceRefreshModelsDev = false,
 ) {
-	const { config } = await loadResolvedApertureProviderConfig({
-		cwd: ctx?.cwd,
-		packageRoot: PACKAGE_ROOT,
-	});
-	const runtime = createApertureProviderRuntime(config);
-
-	await runtime.sync(
+	return registerApertureProviders(
 		{
 			registerProvider(name, registration) {
-				pi.registerProvider(name, toPiProviderRegistration(registration) as never);
+				pi.registerProvider(name, registration as never);
 			},
 		},
-		undefined as never,
-		{ forceRefreshModelsDev },
+		{
+			cwd: ctx?.cwd,
+			packageRoot: PACKAGE_ROOT,
+			forceRefreshModelsDev,
+		},
 	);
-
-	return runtime;
 }
 
-export default function apertureProviderExtension(pi: ExtensionAPI) {
-	void syncProvider(pi).catch((error) => {
+export default async function apertureProviderExtension(pi: ExtensionAPI) {
+	await syncProvider(pi).catch((error) => {
 		reportSyncFailure(undefined, error);
 	});
 
