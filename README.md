@@ -108,6 +108,8 @@ Provider sync now uses a persisted registration cache. On startup it reads the c
 
 If you want warning output while debugging cache refreshes or missing metadata, set `PI_APERTURE_DEBUG=1`. In normal mode those warnings are returned in runtime state but not dumped to the console.
 
+Security note: as of `0.2.11`, the persisted cache excludes `apiKey`, and background refresh only updates the cache for future startups instead of re-registering live providers mid-session.
+
 Example config override:
 
 ```json
