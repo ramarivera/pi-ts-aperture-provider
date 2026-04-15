@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -1039,7 +1039,78 @@ test("runtime logs formatted warnings when debug mode is enabled", async () => {
 	}
 });
 
-test("runtime reuses cached registrations on sync and refreshes in background", async () => {
+test("runtime cache file excludes apiKey", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pi-ts-aperture-provider-cache-secret-"));
+	const cachePath = join(root, "aperture-cache.json");
+	const originalFetch = globalThis.fetch;
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "cached-model",
+							metadata: {
+								provider: {
+									id: "provider-1",
+									name: "Anthropic Gateway",
+									description: "Models exposed via /v1/messages",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(
+				JSON.stringify({
+					anthropic: {
+						id: "anthropic",
+						name: "Anthropic",
+						models: {
+							"cached-model": {
+								id: "cached-model",
+								reasoning: true,
+								modalities: { input: ["text"] },
+								limit: { context: 200000, output: 16384 },
+							},
+						},
+					},
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		const runtime = createApertureProviderRuntime(
+			{
+				providerName: "cached-aperture",
+				baseUrl: "https://gateway.example/v1",
+				apiKey: "super-secret-api-key",
+				modelsDev: {
+					url: "https://catalog.example/models.dev.json",
+				},
+			},
+			{ cachePath }
+		);
+		await runtime.sync({ registerProvider() {} });
+
+		const rawCache = await readFile(cachePath, "utf8");
+		assert.equal(rawCache.includes("super-secret-api-key"), false);
+	} finally {
+		globalThis.fetch = originalFetch;
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("runtime reuses cached registrations on sync and refreshes cache in background without live re-registration", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-ts-aperture-provider-cache-"));
 	const cachePath = join(root, "aperture-cache.json");
 	const originalFetch = globalThis.fetch;
@@ -1106,14 +1177,49 @@ test("runtime reuses cached registrations on sync and refreshes in background", 
 		globalThis.fetch = async (input) => {
 			backgroundFetchStarted = true;
 			const url = String(input);
-			if (url === "https://gateway.example/aperture/config") {
-				return new Promise<Response>(() => {});
-			}
 			if (url === "https://gateway.example/v1/models") {
-				return new Promise<Response>(() => {});
+				return new Response(
+					JSON.stringify({
+						data: [
+							{
+								id: "fresh-model",
+								metadata: {
+									provider: {
+										id: "provider-1",
+										name: "Anthropic Gateway",
+										description: "Models exposed via /v1/messages",
+									},
+								},
+							},
+						],
+					}),
+					{ status: 200, headers: { "content-type": "application/json" } }
+				);
 			}
 			if (url === "https://catalog.example/models.dev.json") {
-				return new Promise<Response>(() => {});
+				return new Response(
+					JSON.stringify({
+						anthropic: {
+							id: "anthropic",
+							name: "Anthropic",
+							models: {
+								"fresh-model": {
+									id: "fresh-model",
+									reasoning: true,
+									modalities: { input: ["text"] },
+									limit: { context: 250000, output: 32000 },
+								},
+							},
+						},
+					}),
+					{ status: 200, headers: { "content-type": "application/json" } }
+				);
+			}
+			if (url === "https://gateway.example/aperture/config") {
+				return new Response(JSON.stringify({}), {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				});
 			}
 			throw new Error(`Unexpected fetch: ${url}`);
 		};
@@ -1129,6 +1235,14 @@ test("runtime reuses cached registrations on sync and refreshes in background", 
 			},
 		});
 
+		for (let attempt = 0; attempt < 20; attempt += 1) {
+			const rawCache = await readFile(cachePath, "utf8");
+			if (rawCache.includes("fresh-model")) {
+				break;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+
 		assert.deepEqual(registrations, [
 			{
 				name: "cached-aperture",
@@ -1136,6 +1250,8 @@ test("runtime reuses cached registrations on sync and refreshes in background", 
 			},
 		]);
 		assert.equal(backgroundFetchStarted, true);
+		const updatedCache = await readFile(cachePath, "utf8");
+		assert.equal(updatedCache.includes("fresh-model"), true);
 	} finally {
 		globalThis.fetch = originalFetch;
 		await rm(root, { recursive: true, force: true });

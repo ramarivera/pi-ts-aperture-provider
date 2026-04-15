@@ -22,6 +22,7 @@ import type {
 	ProviderInput,
 	ProviderModel,
 	ProviderRegistrar,
+	ProviderRegistration,
 	SyncContext,
 } from "./types";
 
@@ -39,10 +40,21 @@ type ApertureGatewayConfig = {
 	providers?: Record<string, ApertureGatewayProviderConfig>;
 };
 
+type CachedProviderRegistration = Omit<ProviderRegistration, "apiKey">;
+
+type CachedNamedProviderRegistration = {
+	name: string;
+	registration: CachedProviderRegistration;
+};
+
+type CachedBuildRegistrationResult = Omit<BuildRegistrationResult, "registrations"> & {
+	registrations: CachedNamedProviderRegistration[];
+};
+
 type PersistedRegistrationCache = {
 	version: 1;
 	configHash: string;
-	result: BuildRegistrationResult;
+	result: CachedBuildRegistrationResult;
 	cachedAt: number;
 };
 
@@ -510,6 +522,38 @@ function emitDebugError(message: string, error: unknown) {
 	console.error(error);
 }
 
+function toCachedBuildRegistrationResult(
+	result: BuildRegistrationResult
+): CachedBuildRegistrationResult {
+	return {
+		...result,
+		registrations: result.registrations.map((entry) => ({
+			name: entry.name,
+			registration: {
+				baseUrl: entry.registration.baseUrl,
+				api: entry.registration.api,
+				models: entry.registration.models,
+			},
+		})),
+	};
+}
+
+function fromCachedBuildRegistrationResult(
+	result: CachedBuildRegistrationResult,
+	apiKey: string
+): BuildRegistrationResult {
+	return {
+		...result,
+		registrations: result.registrations.map((entry) => ({
+			name: entry.name,
+			registration: {
+				...entry.registration,
+				apiKey,
+			},
+		})),
+	};
+}
+
 export function createApertureProviderRuntime(
 	input: ApertureProviderConfigInput,
 	options?: CreateApertureProviderRuntimeOptions
@@ -547,7 +591,7 @@ export function createApertureProviderRuntime(
 			if (!parsed.result || !Array.isArray(parsed.result.registrations)) {
 				return null;
 			}
-			return parsed.result;
+			return fromCachedBuildRegistrationResult(parsed.result, config.apiKey);
 		} catch {
 			return null;
 		}
@@ -562,7 +606,7 @@ export function createApertureProviderRuntime(
 					{
 						version: CACHE_VERSION,
 						configHash: cacheHash,
-						result,
+						result: toCachedBuildRegistrationResult(result),
 						cachedAt: Date.now(),
 					} satisfies PersistedRegistrationCache,
 					null,
@@ -715,7 +759,6 @@ export function createApertureProviderRuntime(
 
 	async function buildRegistrationFresh(options?: {
 		forceRefreshModelsDev?: boolean;
-		persistCache?: boolean;
 	}): Promise<BuildRegistrationResult> {
 		const [providerApiMap, apertureModels, modelsDevIndex] = await Promise.all([
 			fetchProviderApiMap().catch(() => new Map<string, ProviderApi>()),
@@ -773,34 +816,23 @@ export function createApertureProviderRuntime(
 		}
 		const summary = `${models.length} models (${apiSummary}; ${summaryParts.join("; ")})`;
 		const registrations = buildProviderRegistrations(config, models);
-		const result = {
+		return {
 			registrations,
 			summary,
 			modelsDevSummary,
 			warnings,
 		};
-
-		if (options?.persistCache !== false) {
-			await writeRegistrationCache(result);
-		}
-
-		return result;
 	}
 
-	async function scheduleBackgroundRefresh(
-		registrar: ProviderRegistrar,
-		_ctx?: SyncContext
-	): Promise<void> {
+	async function scheduleBackgroundRefresh(_ctx?: SyncContext): Promise<void> {
 		if (backgroundRefreshPromise) {
 			return backgroundRefreshPromise;
 		}
 
 		backgroundRefreshPromise = (async () => {
 			try {
-				const result = await buildRegistrationFresh({ persistCache: true });
-				registerFromResult(registrar, result);
-				lastSyncSummary = result.summary;
-				lastWarnings = result.warnings;
+				const result = await buildRegistrationFresh();
+				await writeRegistrationCache(result);
 			} catch (error) {
 				if (debug) {
 					emitDebugError("background Aperture refresh failed", error);
@@ -818,7 +850,6 @@ export function createApertureProviderRuntime(
 	}): Promise<BuildRegistrationResult> {
 		return buildRegistrationFresh({
 			forceRefreshModelsDev: options?.forceRefreshModelsDev,
-			persistCache: true,
 		});
 	}
 
@@ -839,15 +870,15 @@ export function createApertureProviderRuntime(
 					registerFromResult(registrar, cached);
 					lastSyncSummary = `${cached.summary} [cache]`;
 					lastWarnings = cached.warnings;
-					void scheduleBackgroundRefresh(registrar, ctx);
+					void scheduleBackgroundRefresh(ctx);
 					return;
 				}
 			}
 
 			const result = await buildRegistrationFresh({
 				forceRefreshModelsDev: forceRefresh,
-				persistCache: true,
 			});
+			await writeRegistrationCache(result);
 			registerFromResult(registrar, result);
 			lastSyncSummary = result.summary;
 			lastWarnings = result.warnings;

@@ -34,7 +34,7 @@ This package is now Pi-installable.
 ### Super simple setup
 
 ```bash
-pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.10
+pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.11
 ```
 
 That is enough for Pi to load the extension. Pi discovers the packaged extension from `package.json -> pi.extensions` and loads `extensions/index.ts` automatically. If you do not provide your own config yet, the extension falls back to the bundled [`aperture-provider.config.example.json`](./aperture-provider.config.example.json) as a bootstrap default; most installs should still copy and customize that file.
@@ -44,7 +44,7 @@ If you prefer to do it manually instead of `pi install`, add this to `~/.pi/agen
 ```json
 {
   "packages": [
-    "npm:@ramarivera/pi-ts-aperture-provider@0.2.10"
+    "npm:@ramarivera/pi-ts-aperture-provider@0.2.11
   ]
 }
 ```
