@@ -3,6 +3,8 @@ import { toPiProviderRegistration } from "./pi-provider";
 import { createApertureProviderRuntime } from "./provider";
 import type { ApertureProviderRuntime } from "./types";
 
+type ApertureRuntimeOptions = Parameters<typeof createApertureProviderRuntime>[1];
+
 export type ApertureProviderRegistrar = {
 	registerProvider(name: string, registration: ReturnType<typeof toPiProviderRegistration>): void;
 };
@@ -12,6 +14,7 @@ export type RegisterApertureProvidersOptions = {
 	packageRoot?: string | URL;
 	forceRefreshModelsDev?: boolean;
 	loadConfig?: typeof loadResolvedApertureProviderConfig;
+	runtimeOptions?: ApertureRuntimeOptions;
 };
 
 export async function registerApertureProviders(
@@ -23,7 +26,7 @@ export async function registerApertureProviders(
 		cwd: options?.cwd,
 		packageRoot: options?.packageRoot,
 	});
-	const runtime = createApertureProviderRuntime(config);
+	const runtime = createApertureProviderRuntime(config, options?.runtimeOptions);
 
 	await runtime.sync(
 		{

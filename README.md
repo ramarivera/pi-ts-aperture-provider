@@ -34,7 +34,7 @@ This package is now Pi-installable.
 ### Super simple setup
 
 ```bash
-pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.9
+pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.10
 ```
 
 That is enough for Pi to load the extension. Pi discovers the packaged extension from `package.json -> pi.extensions` and loads `extensions/index.ts` automatically. If you do not provide your own config yet, the extension falls back to the bundled [`aperture-provider.config.example.json`](./aperture-provider.config.example.json) as a bootstrap default; most installs should still copy and customize that file.
@@ -44,7 +44,7 @@ If you prefer to do it manually instead of `pi install`, add this to `~/.pi/agen
 ```json
 {
   "packages": [
-    "npm:@ramarivera/pi-ts-aperture-provider@0.2.9"
+    "npm:@ramarivera/pi-ts-aperture-provider@0.2.10"
   ]
 }
 ```
@@ -100,6 +100,14 @@ The fallback layer is intentionally conservative. It is not freeform model-name 
 
 If a model still lacks required capability metadata after those layers, the runtime warns and skips that model by default instead of crashing the entire sync. If you want strict behavior, set `resolution.skipModelsMissingCapabilities` to `false`.
 
+Provider sync now uses a persisted registration cache. On startup it reads the cached provider registration first, returns quickly, and refreshes in the background when a cache entry exists. The default cache path is:
+
+```text
+~/.pi/agent/cache/aperture-provider/<provider-name>.json
+```
+
+If you want warning output while debugging cache refreshes or missing metadata, set `PI_APERTURE_DEBUG=1`. In normal mode those warnings are returned in runtime state but not dumped to the console.
+
 Example config override:
 
 ```json
@@ -126,7 +134,10 @@ import {
 } from "@ramarivera/pi-ts-aperture-provider";
 
 const { config } = await loadResolvedApertureProviderConfig();
-const runtime = createApertureProviderRuntime(config);
+const runtime = createApertureProviderRuntime(config, {
+  cachePath: "/tmp/aperture-provider-cache.json", // optional
+  debug: process.env.PI_APERTURE_DEBUG === "1", // optional
+});
 ```
 
 ## Repository layout

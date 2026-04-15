@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+
 import { DEFAULT_CONFIG, defineApertureProviderConfig } from "./config";
 import { resolveFallbackMetadata } from "./fallback-metadata";
 import { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev";
@@ -16,6 +21,8 @@ import type {
 	ProviderCost,
 	ProviderInput,
 	ProviderModel,
+	ProviderRegistrar,
+	SyncContext,
 } from "./types";
 
 type ApertureCompatibility = Partial<{
@@ -31,6 +38,23 @@ type ApertureGatewayProviderConfig = {
 type ApertureGatewayConfig = {
 	providers?: Record<string, ApertureGatewayProviderConfig>;
 };
+
+type PersistedRegistrationCache = {
+	version: 1;
+	configHash: string;
+	result: BuildRegistrationResult;
+	cachedAt: number;
+};
+
+type CreateApertureProviderRuntimeOptions = {
+	cachePath?: string;
+	debug?: boolean;
+};
+
+const CACHE_VERSION = 1;
+const YELLOW = "\u001b[33m";
+const DIM = "\u001b[2m";
+const RESET = "\u001b[0m";
 
 function joinUrl(baseUrl: string, path: string): string {
 	return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
@@ -454,14 +478,53 @@ function toProviderModel(
 	};
 }
 
+function sanitizeCacheSegment(value: string): string {
+	const sanitized = value
+		.toLowerCase()
+		.replace(/[^a-z0-9._-]+/g, "-")
+		.replace(/^-+|-+$/g, "");
+	return sanitized || "aperture-provider";
+}
+
+function defaultCachePath(config: ApertureProviderConfig): string {
+	return join(
+		homedir(),
+		".pi",
+		"agent",
+		"cache",
+		"aperture-provider",
+		`${sanitizeCacheSegment(config.providerName)}.json`
+	);
+}
+
+function configCacheHash(config: ApertureProviderConfig): string {
+	return createHash("sha256").update(JSON.stringify(config)).digest("hex");
+}
+
+function emitFormattedWarning(message: string) {
+	console.warn(`${YELLOW}Aperture warning${RESET} ${DIM}${message}${RESET}`);
+}
+
+function emitDebugError(message: string, error: unknown) {
+	console.error(`${YELLOW}Aperture debug${RESET} ${message}`);
+	console.error(error);
+}
+
 export function createApertureProviderRuntime(
-	input: ApertureProviderConfigInput
+	input: ApertureProviderConfigInput,
+	options?: CreateApertureProviderRuntimeOptions
 ): ApertureProviderRuntime {
 	const config = defineApertureProviderConfig({
 		...DEFAULT_CONFIG,
 		...input,
 	});
+	const debug =
+		options?.debug ??
+		(process.env.PI_APERTURE_DEBUG === "1" || process.env.PI_APERTURE_DEBUG === "true");
+	const cachePath = options?.cachePath ?? defaultCachePath(config);
+	const cacheHash = configCacheHash(config);
 	let syncPromise: Promise<void> | null = null;
+	let backgroundRefreshPromise: Promise<void> | null = null;
 	let modelsDevIndexPromise: Promise<ModelsDevIndex> | null = null;
 	let modelsDevIndexCache: ModelsDevIndex | null = null;
 	let modelsDevIndexCachedAt = 0;
@@ -470,6 +533,65 @@ export function createApertureProviderRuntime(
 	let lastSyncSummary = "not synced yet";
 	let lastModelsDevSummary = "not fetched yet";
 	let lastWarnings: string[] = [];
+
+	async function readRegistrationCache(): Promise<BuildRegistrationResult | null> {
+		try {
+			const raw = await readFile(cachePath, "utf8");
+			const parsed = JSON.parse(raw) as PersistedRegistrationCache;
+			if (parsed.version !== CACHE_VERSION) {
+				return null;
+			}
+			if (parsed.configHash !== cacheHash) {
+				return null;
+			}
+			if (!parsed.result || !Array.isArray(parsed.result.registrations)) {
+				return null;
+			}
+			return parsed.result;
+		} catch {
+			return null;
+		}
+	}
+
+	async function writeRegistrationCache(result: BuildRegistrationResult): Promise<void> {
+		try {
+			await mkdir(dirname(cachePath), { recursive: true });
+			await writeFile(
+				cachePath,
+				JSON.stringify(
+					{
+						version: CACHE_VERSION,
+						configHash: cacheHash,
+						result,
+						cachedAt: Date.now(),
+					} satisfies PersistedRegistrationCache,
+					null,
+					2
+				),
+				"utf8"
+			);
+		} catch (error) {
+			if (debug) {
+				emitDebugError(`failed to write Aperture cache at ${cachePath}`, error);
+			}
+		}
+	}
+
+	function registerFromResult(registrar: ProviderRegistrar, result: BuildRegistrationResult) {
+		for (const entry of result.registrations) {
+			registrar.registerProvider(entry.name, entry.registration);
+		}
+	}
+
+	function emitWarnings(warnings: string[]) {
+		if (!debug) {
+			return;
+		}
+
+		for (const warning of warnings) {
+			emitFormattedWarning(warning);
+		}
+	}
 
 	async function fetchApertureModels(): Promise<ApertureModel[]> {
 		const providerApiMap = await fetchProviderApiMap().catch(() => new Map<string, ProviderApi>());
@@ -591,8 +713,9 @@ export function createApertureProviderRuntime(
 		return modelsDevIndexPromise;
 	}
 
-	async function buildRegistration(options?: {
+	async function buildRegistrationFresh(options?: {
 		forceRefreshModelsDev?: boolean;
+		persistCache?: boolean;
 	}): Promise<BuildRegistrationResult> {
 		const [providerApiMap, apertureModels, modelsDevIndex] = await Promise.all([
 			fetchProviderApiMap().catch(() => new Map<string, ProviderApi>()),
@@ -619,9 +742,8 @@ export function createApertureProviderRuntime(
 				);
 			}
 		}
-		for (const warning of warnings) {
-			console.warn(warning);
-		}
+
+		emitWarnings(warnings);
 
 		const modelsDevMatches = modelsDevIndex
 			? apertureModels.filter(
@@ -651,13 +773,53 @@ export function createApertureProviderRuntime(
 		}
 		const summary = `${models.length} models (${apiSummary}; ${summaryParts.join("; ")})`;
 		const registrations = buildProviderRegistrations(config, models);
-
-		return {
+		const result = {
 			registrations,
 			summary,
 			modelsDevSummary,
 			warnings,
 		};
+
+		if (options?.persistCache !== false) {
+			await writeRegistrationCache(result);
+		}
+
+		return result;
+	}
+
+	async function scheduleBackgroundRefresh(
+		registrar: ProviderRegistrar,
+		_ctx?: SyncContext
+	): Promise<void> {
+		if (backgroundRefreshPromise) {
+			return backgroundRefreshPromise;
+		}
+
+		backgroundRefreshPromise = (async () => {
+			try {
+				const result = await buildRegistrationFresh({ persistCache: true });
+				registerFromResult(registrar, result);
+				lastSyncSummary = result.summary;
+				lastWarnings = result.warnings;
+			} catch (error) {
+				if (debug) {
+					emitDebugError("background Aperture refresh failed", error);
+				}
+			}
+		})().finally(() => {
+			backgroundRefreshPromise = null;
+		});
+
+		return backgroundRefreshPromise;
+	}
+
+	async function buildRegistration(options?: {
+		forceRefreshModelsDev?: boolean;
+	}): Promise<BuildRegistrationResult> {
+		return buildRegistrationFresh({
+			forceRefreshModelsDev: options?.forceRefreshModelsDev,
+			persistCache: true,
+		});
 	}
 
 	async function sync(
@@ -670,13 +832,26 @@ export function createApertureProviderRuntime(
 		}
 
 		syncPromise = (async () => {
-			const { registrations, summary, warnings } = await buildRegistration(options);
-			for (const entry of registrations) {
-				registrar.registerProvider(entry.name, entry.registration);
+			const forceRefresh = options?.forceRefreshModelsDev === true;
+			if (!forceRefresh) {
+				const cached = await readRegistrationCache();
+				if (cached) {
+					registerFromResult(registrar, cached);
+					lastSyncSummary = `${cached.summary} [cache]`;
+					lastWarnings = cached.warnings;
+					void scheduleBackgroundRefresh(registrar, ctx);
+					return;
+				}
 			}
-			lastSyncSummary = summary;
-			lastWarnings = warnings;
-			ctx?.ui?.notify(`${config.providerName} synced: ${summary}`, "success");
+
+			const result = await buildRegistrationFresh({
+				forceRefreshModelsDev: forceRefresh,
+				persistCache: true,
+			});
+			registerFromResult(registrar, result);
+			lastSyncSummary = result.summary;
+			lastWarnings = result.warnings;
+			ctx?.ui?.notify(`${config.providerName} synced: ${result.summary}`, "success");
 		})()
 			.catch((error) => {
 				lastSyncSummary = error instanceof Error ? error.message : String(error);

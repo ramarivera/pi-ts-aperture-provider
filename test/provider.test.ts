@@ -407,18 +407,26 @@ test("runtime builds registration from config and model overrides", async () => 
 	};
 
 	try {
-		const runtime = createApertureProviderRuntime({
-			providerName: "custom-aperture",
-			baseUrl: "https://gateway.example/v1",
-			modelsDev: {
-				url: "https://catalog.example/models.dev.json",
-			},
-			modelOverrides: {
-				"openai/gpt-5": {
-					maxTokens: 32000,
+		const runtime = createApertureProviderRuntime(
+			{
+				providerName: "custom-aperture",
+				baseUrl: "https://gateway.example/v1",
+				modelsDev: {
+					url: "https://catalog.example/models.dev.json",
+				},
+				modelOverrides: {
+					"openai/gpt-5": {
+						maxTokens: 32000,
+					},
 				},
 			},
-		});
+			{
+				cachePath: join(
+					tmpdir(),
+					`pi-ts-aperture-provider-test-${Date.now()}-${Math.random()}.json`
+				),
+			}
+		);
 
 		const registrations: Array<{
 			name: string;
@@ -534,6 +542,12 @@ test("registerApertureProviders awaits initial provider registration", async () 
 			{
 				cwd: process.cwd(),
 				packageRoot: new URL("../", import.meta.url),
+				runtimeOptions: {
+					cachePath: join(
+						tmpdir(),
+						`pi-ts-aperture-provider-test-${Date.now()}-${Math.random()}.json`
+					),
+				},
 				loadConfig: async () => ({
 					path: "/tmp/aperture-provider.config.json",
 					config: defineApertureProviderConfig({
@@ -656,13 +670,21 @@ test("runtime splits mixed API models into separate provider registrations", asy
 	};
 
 	try {
-		const runtime = createApertureProviderRuntime({
-			providerName: "aperture-gateway",
-			baseUrl: "https://gateway.example/v1",
-			modelsDev: {
-				url: "https://catalog.example/models.dev.json",
+		const runtime = createApertureProviderRuntime(
+			{
+				providerName: "aperture-gateway",
+				baseUrl: "https://gateway.example/v1",
+				modelsDev: {
+					url: "https://catalog.example/models.dev.json",
+				},
 			},
-		});
+			{
+				cachePath: join(
+					tmpdir(),
+					`pi-ts-aperture-provider-test-${Date.now()}-${Math.random()}.json`
+				),
+			}
+		);
 
 		const registrations: Array<{
 			name: string;
@@ -792,7 +814,7 @@ test("runtime can omit source provider labels from model names", async () => {
 	}
 });
 
-test("runtime uses fallback metadata for known Kimi models and warns", async () => {
+test("runtime uses fallback metadata for known Kimi models and returns warnings without logging by default", async () => {
 	const originalFetch = globalThis.fetch;
 	const originalWarn = console.warn;
 	const warnings: string[] = [];
@@ -877,14 +899,14 @@ test("runtime uses fallback metadata for known Kimi models and warns", async () 
 		assert.equal(buildWarnings.length, 2);
 		assert.match(buildWarnings[0] ?? "", /Using fallback metadata for model "K2\.5"/);
 		assert.match(buildWarnings[1] ?? "", /Using fallback metadata for model "K2\.6-code-preview"/);
-		assert.equal(warnings.length, 2);
+		assert.equal(warnings.length, 0);
 	} finally {
 		console.warn = originalWarn;
 		globalThis.fetch = originalFetch;
 	}
 });
 
-test("runtime skips models with unknown missing capabilities and warns", async () => {
+test("runtime skips models with unknown missing capabilities and returns warnings without logging by default", async () => {
 	const originalFetch = globalThis.fetch;
 	const originalWarn = console.warn;
 	const warnings: string[] = [];
@@ -941,11 +963,182 @@ test("runtime skips models with unknown missing capabilities and warns", async (
 		assert.equal(buildWarnings.length, 1);
 		assert.match(buildWarnings[0] ?? "", /Skipping model "unknown-model"/);
 		assert.match(buildWarnings[0] ?? "", /reasoning/);
-		assert.equal(warnings.length, 1);
+		assert.equal(warnings.length, 0);
 		assert.match(summary, /1 skipped/);
 	} finally {
 		console.warn = originalWarn;
 		globalThis.fetch = originalFetch;
+	}
+});
+
+test("runtime logs formatted warnings when debug mode is enabled", async () => {
+	const originalFetch = globalThis.fetch;
+	const originalWarn = console.warn;
+	const warnings: string[] = [];
+
+	console.warn = (message?: unknown) => {
+		warnings.push(String(message));
+	};
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "K2.5",
+							metadata: {
+								provider: {
+									id: "provider-kimi",
+									name: "Kimi Gateway",
+									description: "Moonshot Kimi models exposed via /v1/chat/completions",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(JSON.stringify({}), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		const runtime = createApertureProviderRuntime(
+			{
+				providerName: "fallback-aperture",
+				baseUrl: "https://gateway.example/v1",
+				modelsDev: {
+					url: "https://catalog.example/models.dev.json",
+				},
+			},
+			{
+				debug: true,
+			}
+		);
+
+		const { warnings: buildWarnings } = await runtime.buildRegistration();
+
+		assert.equal(buildWarnings.length, 1);
+		assert.equal(warnings.length, 1);
+		assert.match(warnings[0] ?? "", /Aperture warning/);
+		assert.match(warnings[0] ?? "", /K2\.5/);
+	} finally {
+		console.warn = originalWarn;
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("runtime reuses cached registrations on sync and refreshes in background", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pi-ts-aperture-provider-cache-"));
+	const cachePath = join(root, "aperture-cache.json");
+	const originalFetch = globalThis.fetch;
+
+	const config = defineApertureProviderConfig({
+		providerName: "cached-aperture",
+		baseUrl: "https://gateway.example/v1",
+		modelsDev: {
+			url: "https://catalog.example/models.dev.json",
+		},
+	});
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "cached-model",
+							metadata: {
+								provider: {
+									id: "provider-1",
+									name: "Anthropic Gateway",
+									description: "Models exposed via /v1/messages",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(
+				JSON.stringify({
+					anthropic: {
+						id: "anthropic",
+						name: "Anthropic",
+						models: {
+							"cached-model": {
+								id: "cached-model",
+								reasoning: true,
+								modalities: { input: ["text"] },
+								limit: { context: 200000, output: 16384 },
+							},
+						},
+					},
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		const firstRuntime = createApertureProviderRuntime(config, { cachePath });
+		await firstRuntime.sync({
+			registerProvider() {},
+		});
+
+		let backgroundFetchStarted = false;
+		globalThis.fetch = async (input) => {
+			backgroundFetchStarted = true;
+			const url = String(input);
+			if (url === "https://gateway.example/aperture/config") {
+				return new Promise<Response>(() => {});
+			}
+			if (url === "https://gateway.example/v1/models") {
+				return new Promise<Response>(() => {});
+			}
+			if (url === "https://catalog.example/models.dev.json") {
+				return new Promise<Response>(() => {});
+			}
+			throw new Error(`Unexpected fetch: ${url}`);
+		};
+
+		const registrations: Array<{ name: string; models: string[] }> = [];
+		const secondRuntime = createApertureProviderRuntime(config, { cachePath });
+		await secondRuntime.sync({
+			registerProvider(name, registration) {
+				registrations.push({
+					name,
+					models: registration.models.map((model) => model.id),
+				});
+			},
+		});
+
+		assert.deepEqual(registrations, [
+			{
+				name: "cached-aperture",
+				models: ["cached-model"],
+			},
+		]);
+		assert.equal(backgroundFetchStarted, true);
+	} finally {
+		globalThis.fetch = originalFetch;
+		await rm(root, { recursive: true, force: true });
 	}
 });
 
