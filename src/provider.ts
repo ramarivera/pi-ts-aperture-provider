@@ -1,4 +1,5 @@
 import { DEFAULT_CONFIG, defineApertureProviderConfig } from "./config";
+import { resolveFallbackMetadata } from "./fallback-metadata";
 import { buildModelsDevIndex, enrichApertureModelMetadata } from "./models-dev";
 import type {
 	ApertureModel,
@@ -311,30 +312,61 @@ function buildProviderRegistrations(
 	}));
 }
 
-function requireCapability<T>(
+type CapabilitySource = "override" | "models.dev" | "fallback";
+
+type ResolvedCapability<T> = {
+	value: T;
+	source: CapabilitySource;
+};
+
+function missingCapabilityError(
 	model: ApertureModel,
 	field: string,
-	overrideValue: T | undefined,
-	modelsDevValue: T | null,
 	requireModelsDev: boolean
-): T {
-	if (overrideValue !== undefined) {
-		return overrideValue;
-	}
-
-	if (modelsDevValue !== null) {
-		return modelsDevValue;
-	}
-
+): Error {
 	if (requireModelsDev) {
-		throw new Error(
+		return new Error(
 			`Missing required "${field}" metadata for model "${model.id}". Add a model override or ensure models.dev has this model.`
 		);
 	}
 
-	throw new Error(
+	return new Error(
 		`Model "${model.id}" cannot be registered without "${field}" metadata. Add a model override for this model.`
 	);
+}
+
+function isMissingCapabilityError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+
+	return (
+		error.message.includes('Missing required "') ||
+		error.message.includes("cannot be registered without")
+	);
+}
+
+function resolveCapability<T>(
+	model: ApertureModel,
+	field: string,
+	overrideValue: T | undefined,
+	modelsDevValue: T | null,
+	fallbackValue: T | undefined,
+	requireModelsDev: boolean
+): ResolvedCapability<T> {
+	if (overrideValue !== undefined) {
+		return { value: overrideValue, source: "override" };
+	}
+
+	if (modelsDevValue !== null) {
+		return { value: modelsDevValue, source: "models.dev" };
+	}
+
+	if (fallbackValue !== undefined) {
+		return { value: fallbackValue, source: "fallback" };
+	}
+
+	throw missingCapabilityError(model, field, requireModelsDev);
 }
 
 function toProviderModel(
@@ -342,52 +374,83 @@ function toProviderModel(
 	config: ApertureProviderConfig,
 	modelsDevIndex: ModelsDevIndex | null,
 	providerApiMap: Map<string, ProviderApi>
-): ProviderModel {
+): { model: ProviderModel; warnings: string[] } {
 	const override = findModelOverride(model.id, config.modelOverrides);
 	const api = override?.api ?? resolveApiForModel(model, config, providerApiMap);
 	const providerLabel = providerNameLabel(model.metadata?.provider);
 	const compat = override?.compat ?? inferCompat(api);
 	const enriched = enrichApertureModelMetadata(model, modelsDevIndex);
+	const fallback = config.resolution.useKnownModelFallbacks
+		? resolveFallbackMetadata(model, config.fallbackMetadata)
+		: null;
+	const fallbackFields: string[] = [];
+	const reasoning = resolveCapability(
+		model,
+		"reasoning",
+		override?.reasoning,
+		enriched.reasoning,
+		fallback?.reasoning,
+		config.resolution.requireModelsDevForCapabilities
+	);
+	if (reasoning.source === "fallback") {
+		fallbackFields.push("reasoning");
+	}
+	const input = resolveCapability<ProviderInput[]>(
+		model,
+		"input",
+		override?.input,
+		enriched.input,
+		fallback?.input,
+		config.resolution.requireModelsDevForCapabilities
+	);
+	if (input.source === "fallback") {
+		fallbackFields.push("input");
+	}
+	const contextWindow = resolveCapability(
+		model,
+		"contextWindow",
+		override?.contextWindow,
+		enriched.contextWindow,
+		fallback?.contextWindow,
+		config.resolution.requireModelsDevForCapabilities
+	);
+	if (contextWindow.source === "fallback") {
+		fallbackFields.push("contextWindow");
+	}
+	const maxTokens = resolveCapability(
+		model,
+		"maxTokens",
+		override?.maxTokens,
+		enriched.maxTokens,
+		fallback?.maxTokens,
+		config.resolution.requireModelsDevForCapabilities
+	);
+	if (maxTokens.source === "fallback") {
+		fallbackFields.push("maxTokens");
+	}
 	const cost = hasAperturePricing(model) ? inferCost(model) : (enriched.cost ?? inferCost(model));
+	const warnings =
+		fallbackFields.length > 0
+			? [`Using fallback metadata for model "${model.id}": ${fallbackFields.join(", ")}.`]
+			: [];
 
 	return {
-		id: model.id,
-		name:
-			override?.name ??
-			(config.resolution.providerLabelInName && providerLabel
-				? `${model.id} (${providerLabel})`
-				: model.id),
-		api,
-		reasoning: requireCapability(
-			model,
-			"reasoning",
-			override?.reasoning,
-			enriched.reasoning,
-			config.resolution.requireModelsDevForCapabilities
-		),
-		input: requireCapability<ProviderInput[]>(
-			model,
-			"input",
-			override?.input,
-			enriched.input,
-			config.resolution.requireModelsDevForCapabilities
-		),
-		cost: override?.cost ?? cost,
-		contextWindow: requireCapability(
-			model,
-			"contextWindow",
-			override?.contextWindow,
-			enriched.contextWindow,
-			config.resolution.requireModelsDevForCapabilities
-		),
-		maxTokens: requireCapability(
-			model,
-			"maxTokens",
-			override?.maxTokens,
-			enriched.maxTokens,
-			config.resolution.requireModelsDevForCapabilities
-		),
-		...(compat ? { compat } : {}),
+		model: {
+			id: model.id,
+			name:
+				override?.name ??
+				(config.resolution.providerLabelInName && providerLabel
+					? `${model.id} (${providerLabel})`
+					: model.id),
+			api,
+			reasoning: reasoning.value,
+			input: input.value,
+			cost: override?.cost ?? cost,
+			contextWindow: contextWindow.value,
+			maxTokens: maxTokens.value,
+			...(compat ? { compat } : {}),
+		},
+		warnings,
 	};
 }
 
@@ -406,6 +469,7 @@ export function createApertureProviderRuntime(
 	let apertureConfigCache: Map<string, ProviderApi> | null = null;
 	let lastSyncSummary = "not synced yet";
 	let lastModelsDevSummary = "not fetched yet";
+	let lastWarnings: string[] = [];
 
 	async function fetchApertureModels(): Promise<ApertureModel[]> {
 		const providerApiMap = await fetchProviderApiMap().catch(() => new Map<string, ProviderApi>());
@@ -536,9 +600,29 @@ export function createApertureProviderRuntime(
 			fetchModelsDevIndex(options?.forceRefreshModelsDev).catch(() => null),
 		]);
 
-		const models = apertureModels.map((model) =>
-			toProviderModel(model, config, modelsDevIndex, providerApiMap)
-		);
+		const models: ProviderModel[] = [];
+		const warnings: string[] = [];
+		let skippedModels = 0;
+		for (const model of apertureModels) {
+			try {
+				const resolved = toProviderModel(model, config, modelsDevIndex, providerApiMap);
+				models.push(resolved.model);
+				warnings.push(...resolved.warnings);
+			} catch (error) {
+				if (!config.resolution.skipModelsMissingCapabilities || !isMissingCapabilityError(error)) {
+					throw error;
+				}
+
+				skippedModels += 1;
+				warnings.push(
+					`Skipping model "${model.id}" because capability metadata is incomplete: ${error instanceof Error ? error.message : String(error)}`
+				);
+			}
+		}
+		for (const warning of warnings) {
+			console.warn(warning);
+		}
+
 		const modelsDevMatches = modelsDevIndex
 			? apertureModels.filter(
 					(model) => enrichApertureModelMetadata(model, modelsDevIndex).match != null
@@ -554,16 +638,25 @@ export function createApertureProviderRuntime(
 			modelsDevIndex == null
 				? `models.dev unavailable (${lastModelsDevSummary})`
 				: `${modelsDevMatches}/${apertureModels.length} enriched via models.dev`;
-
-		const summary = `${models.length} models (${Object.entries(apiCounts)
-			.map(([api, count]) => `${count} ${api}`)
-			.join(", ")}; ${modelsDevSummary})`;
+		const apiSummary =
+			Object.entries(apiCounts)
+				.map(([api, count]) => `${count} ${api}`)
+				.join(", ") || "no registrations";
+		const summaryParts = [modelsDevSummary];
+		if (skippedModels > 0) {
+			summaryParts.push(`${skippedModels} skipped`);
+		}
+		if (warnings.length > 0) {
+			summaryParts.push(`${warnings.length} warnings`);
+		}
+		const summary = `${models.length} models (${apiSummary}; ${summaryParts.join("; ")})`;
 		const registrations = buildProviderRegistrations(config, models);
 
 		return {
 			registrations,
 			summary,
 			modelsDevSummary,
+			warnings,
 		};
 	}
 
@@ -577,15 +670,17 @@ export function createApertureProviderRuntime(
 		}
 
 		syncPromise = (async () => {
-			const { registrations, summary } = await buildRegistration(options);
+			const { registrations, summary, warnings } = await buildRegistration(options);
 			for (const entry of registrations) {
 				registrar.registerProvider(entry.name, entry.registration);
 			}
 			lastSyncSummary = summary;
+			lastWarnings = warnings;
 			ctx?.ui?.notify(`${config.providerName} synced: ${summary}`, "success");
 		})()
 			.catch((error) => {
 				lastSyncSummary = error instanceof Error ? error.message : String(error);
+				lastWarnings = [];
 				ctx?.ui?.notify(`${config.providerName} sync failed: ${lastSyncSummary}`, "error");
 				throw error;
 			})
@@ -605,6 +700,7 @@ export function createApertureProviderRuntime(
 			return {
 				lastSyncSummary,
 				lastModelsDevSummary,
+				lastWarnings,
 			};
 		},
 		getConfig() {

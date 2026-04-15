@@ -25,6 +25,7 @@ export type {
 	ApertureProviderRuntime,
 	ApiRule,
 	BuildRegistrationResult,
+	FallbackMetadata,
 	IndexedModelsDevModel,
 	ModelOverride,
 	ModelsDevApiResponse,

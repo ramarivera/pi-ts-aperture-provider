@@ -137,6 +137,13 @@ export type ModelOverride = Partial<{
 	compat: ProviderCompat;
 }>;
 
+export type FallbackMetadata = Partial<{
+	reasoning: boolean;
+	input: ProviderInput[];
+	contextWindow: number;
+	maxTokens: number;
+}>;
+
 export type ApertureProviderConfig = {
 	providerName: string;
 	baseUrl: string;
@@ -150,9 +157,12 @@ export type ApertureProviderConfig = {
 	};
 	resolution: {
 		requireModelsDevForCapabilities: boolean;
+		useKnownModelFallbacks: boolean;
+		skipModelsMissingCapabilities: boolean;
 		providerLabelInName: boolean;
 		apiRules: ApiRule[];
 	};
+	fallbackMetadata: Record<string, FallbackMetadata>;
 	modelOverrides: Record<string, ModelOverride>;
 };
 
@@ -163,6 +173,7 @@ export type ApertureProviderConfigInput = Partial<{
 	modelsPath: string;
 	modelsDev: Partial<ApertureProviderConfig["modelsDev"]>;
 	resolution: Partial<ApertureProviderConfig["resolution"]>;
+	fallbackMetadata: Record<string, FallbackMetadata>;
 	modelOverrides: Record<string, ModelOverride>;
 }>;
 
@@ -170,6 +181,7 @@ export type BuildRegistrationResult = {
 	registrations: NamedProviderRegistration[];
 	summary: string;
 	modelsDevSummary: string;
+	warnings: string[];
 };
 
 export type ApertureProviderRuntime = {
@@ -186,6 +198,7 @@ export type ApertureProviderRuntime = {
 	getState(): {
 		lastSyncSummary: string;
 		lastModelsDevSummary: string;
+		lastWarnings: string[];
 	};
 	getConfig(): ApertureProviderConfig;
 };

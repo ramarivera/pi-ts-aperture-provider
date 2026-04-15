@@ -17,7 +17,7 @@ Shared Aperture provider runtime for Pi, published as both:
 
 - hardcoded Aperture base URLs
 - hardcoded provider names
-- heuristic capability inference from model IDs
+- freeform heuristic capability inference from arbitrary model IDs
 
 ## Quick start
 
@@ -34,7 +34,7 @@ This package is now Pi-installable.
 ### Super simple setup
 
 ```bash
-pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.5
+pi install npm:@ramarivera/pi-ts-aperture-provider@0.2.9
 ```
 
 That is enough for Pi to load the extension. Pi discovers the packaged extension from `package.json -> pi.extensions` and loads `extensions/index.ts` automatically. If you do not provide your own config yet, the extension falls back to the bundled [`aperture-provider.config.example.json`](./aperture-provider.config.example.json) as a bootstrap default; most installs should still copy and customize that file.
@@ -44,7 +44,7 @@ If you prefer to do it manually instead of `pi install`, add this to `~/.pi/agen
 ```json
 {
   "packages": [
-    "npm:@ramarivera/pi-ts-aperture-provider@0.2.5"
+    "npm:@ramarivera/pi-ts-aperture-provider@0.2.9"
   ]
 }
 ```
@@ -73,6 +73,7 @@ Adjust at least:
 - `apiKey`
 - `modelsDev.providerAliases`
 - `resolution.apiRules`
+- `fallbackMetadata`
 - `modelOverrides`
 
 For Aperture, `baseUrl` should be the primary gateway root the extension uses everywhere. In Ramiro's current setup that is:
@@ -85,14 +86,34 @@ For Aperture, `baseUrl` should be the primary gateway root the extension uses ev
 
 ## Runtime behavior
 
-This runtime does not guess capabilities from model IDs. It reads:
+This runtime resolves capabilities from multiple layers, in order:
 
 - API type from Aperture provider metadata such as `/v1/messages`, `/v1/responses`, or `/v1/chat/completions`
 - provider compatibility from `/aperture/config` when available
 - pricing from the Aperture `/models` payload when present
-- reasoning, modalities, and token limits from models.dev or explicit `modelOverrides`
+- explicit `modelOverrides`
+- reasoning, modalities, and token limits from models.dev
+- `fallbackMetadata` from your JSON config
+- bundled conservative fallback metadata for a small set of well-known model families when upstream metadata is missing
 
-If models.dev does not know a model and you do not provide an override, registration fails with a concrete missing-field error instead of inventing values.
+The fallback layer is intentionally conservative. It is not freeform model-name guessing. You can edit `fallbackMetadata` in your `aperture-provider.config.json` without republishing the library, and those entries override the bundled defaults.
+
+If a model still lacks required capability metadata after those layers, the runtime warns and skips that model by default instead of crashing the entire sync. If you want strict behavior, set `resolution.skipModelsMissingCapabilities` to `false`.
+
+Example config override:
+
+```json
+{
+  "fallbackMetadata": {
+    "k2.5": {
+      "reasoning": true,
+      "input": ["text"],
+      "contextWindow": 262144,
+      "maxTokens": 16384
+    }
+  }
+}
+```
 
 ## Using the library directly
 

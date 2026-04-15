@@ -16,6 +16,8 @@
   },
   "resolution": {
     "requireModelsDevForCapabilities": true,
+    "useKnownModelFallbacks": true,
+    "skipModelsMissingCapabilities": true,
     "providerLabelInName": true,
     "apiRules": [
       {
@@ -31,6 +33,16 @@
         "api": "openai-responses"
       }
     ]
+  },
+  "fallbackMetadata": {
+    "k2.5": {
+      "reasoning": true,
+      "input": [
+        "text"
+      ],
+      "contextWindow": 262144,
+      "maxTokens": 16384
+    }
   },
   "modelOverrides": {
     "openai/gpt-5": {

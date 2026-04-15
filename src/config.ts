@@ -4,7 +4,13 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { ApertureProviderConfig, ApertureProviderConfigInput, ModelOverride } from "./types";
+import { DEFAULT_FALLBACK_METADATA, normalizeFallbackMetadataRecord } from "./fallback-metadata";
+import type {
+	ApertureProviderConfig,
+	ApertureProviderConfigInput,
+	FallbackMetadata,
+	ModelOverride,
+} from "./types";
 
 const CONFIG_FILE_NAME = "aperture-provider.config.json";
 const EXAMPLE_CONFIG_FILE_NAME = "aperture-provider.config.example.json";
@@ -38,6 +44,8 @@ export const DEFAULT_CONFIG: ApertureProviderConfig = {
 	},
 	resolution: {
 		requireModelsDevForCapabilities: true,
+		useKnownModelFallbacks: true,
+		skipModelsMissingCapabilities: true,
 		providerLabelInName: true,
 		apiRules: [
 			{
@@ -50,6 +58,7 @@ export const DEFAULT_CONFIG: ApertureProviderConfig = {
 			},
 		],
 	},
+	fallbackMetadata: DEFAULT_FALLBACK_METADATA,
 	modelOverrides: {},
 };
 
@@ -68,6 +77,22 @@ function mergeProviderAliases(
 			existing.add(alias);
 		}
 		merged[key] = [...existing];
+	}
+	return merged;
+}
+
+function mergeFallbackMetadata(
+	base: Record<string, FallbackMetadata>,
+	incoming: Record<string, FallbackMetadata> | undefined
+) {
+	const merged: Record<string, FallbackMetadata> = { ...base };
+	for (const [modelId, metadata] of Object.entries(
+		normalizeFallbackMetadataRecord(incoming ?? {})
+	)) {
+		merged[modelId] = {
+			...(merged[modelId] ?? {}),
+			...metadata,
+		};
 	}
 	return merged;
 }
@@ -107,6 +132,9 @@ function resolveResolutionConfig(
 	return {
 		requireModelsDevForCapabilities:
 			input?.requireModelsDevForCapabilities ?? defaults.requireModelsDevForCapabilities,
+		useKnownModelFallbacks: input?.useKnownModelFallbacks ?? defaults.useKnownModelFallbacks,
+		skipModelsMissingCapabilities:
+			input?.skipModelsMissingCapabilities ?? defaults.skipModelsMissingCapabilities,
 		providerLabelInName: input?.providerLabelInName ?? defaults.providerLabelInName,
 		apiRules: input?.apiRules ?? defaults.apiRules,
 	};
@@ -122,6 +150,10 @@ export function defineApertureProviderConfig(
 		modelsPath: input.modelsPath ?? DEFAULT_CONFIG.modelsPath,
 		modelsDev: resolveModelsDevConfig(input.modelsDev),
 		resolution: resolveResolutionConfig(input.resolution),
+		fallbackMetadata: mergeFallbackMetadata(
+			DEFAULT_CONFIG.fallbackMetadata,
+			input.fallbackMetadata
+		),
 		modelOverrides: mergeModelOverrides(DEFAULT_CONFIG.modelOverrides, input.modelOverrides),
 	};
 }

@@ -792,7 +792,164 @@ test("runtime can omit source provider labels from model names", async () => {
 	}
 });
 
-test("runtime fails when capabilities are missing and no override exists", async () => {
+test("runtime uses fallback metadata for known Kimi models and warns", async () => {
+	const originalFetch = globalThis.fetch;
+	const originalWarn = console.warn;
+	const warnings: string[] = [];
+
+	console.warn = (message?: unknown) => {
+		warnings.push(String(message));
+	};
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "K2.5",
+							metadata: {
+								provider: {
+									id: "provider-kimi",
+									name: "Kimi Gateway",
+									description: "Moonshot Kimi models exposed via /v1/chat/completions",
+								},
+							},
+						},
+						{
+							id: "K2.6-code-preview",
+							metadata: {
+								provider: {
+									id: "provider-kimi",
+									name: "Kimi Gateway",
+									description: "Moonshot Kimi models exposed via /v1/chat/completions",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(JSON.stringify({}), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		const runtime = createApertureProviderRuntime({
+			providerName: "fallback-aperture",
+			baseUrl: "https://gateway.example/v1",
+			modelsDev: {
+				url: "https://catalog.example/models.dev.json",
+			},
+			fallbackMetadata: {
+				"k2.5": {
+					reasoning: true,
+					input: ["text"],
+					contextWindow: 123456,
+					maxTokens: 9999,
+				},
+			},
+		});
+
+		const { registrations, warnings: buildWarnings } = await runtime.buildRegistration();
+		const models = registrations[0]?.registration.models ?? [];
+		const k25 = models.find((model) => model.id === "K2.5");
+		const k26 = models.find((model) => model.id === "K2.6-code-preview");
+
+		assert.equal(k25?.reasoning, true);
+		assert.deepEqual(k25?.input, ["text"]);
+		assert.equal(k25?.contextWindow, 123456);
+		assert.equal(k25?.maxTokens, 9999);
+		assert.equal(k26?.reasoning, true);
+		assert.deepEqual(k26?.input, ["text"]);
+		assert.equal(k26?.contextWindow, 262144);
+		assert.equal(k26?.maxTokens, 16384);
+		assert.equal(buildWarnings.length, 2);
+		assert.match(buildWarnings[0] ?? "", /Using fallback metadata for model "K2\.5"/);
+		assert.match(buildWarnings[1] ?? "", /Using fallback metadata for model "K2\.6-code-preview"/);
+		assert.equal(warnings.length, 2);
+	} finally {
+		console.warn = originalWarn;
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("runtime skips models with unknown missing capabilities and warns", async () => {
+	const originalFetch = globalThis.fetch;
+	const originalWarn = console.warn;
+	const warnings: string[] = [];
+
+	console.warn = (message?: unknown) => {
+		warnings.push(String(message));
+	};
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "unknown-model",
+							metadata: {
+								provider: {
+									id: "provider-x",
+									name: "OpenAI Chat Gateway",
+									description: "Provider exposed via /v1/chat/completions",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://catalog.example/models.dev.json") {
+			return new Response(JSON.stringify({}), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		const runtime = createApertureProviderRuntime({
+			providerName: "fallback-aperture",
+			baseUrl: "https://gateway.example/v1",
+			modelsDev: {
+				url: "https://catalog.example/models.dev.json",
+			},
+		});
+
+		const { registrations, warnings: buildWarnings, summary } = await runtime.buildRegistration();
+
+		assert.equal(registrations.length, 0);
+		assert.equal(buildWarnings.length, 1);
+		assert.match(buildWarnings[0] ?? "", /Skipping model "unknown-model"/);
+		assert.match(buildWarnings[0] ?? "", /reasoning/);
+		assert.equal(warnings.length, 1);
+		assert.match(summary, /1 skipped/);
+	} finally {
+		console.warn = originalWarn;
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("runtime fails when capabilities are missing and skipping is disabled", async () => {
 	const originalFetch = globalThis.fetch;
 
 	globalThis.fetch = async (input) => {
@@ -834,6 +991,9 @@ test("runtime fails when capabilities are missing and no override exists", async
 			baseUrl: "https://gateway.example/v1",
 			modelsDev: {
 				url: "https://catalog.example/models.dev.json",
+			},
+			resolution: {
+				skipModelsMissingCapabilities: false,
 			},
 		});
 
