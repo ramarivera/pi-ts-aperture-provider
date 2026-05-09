@@ -5,7 +5,7 @@ import {
 	streamSimpleAnthropic,
 	streamSimpleOpenAICompletions,
 	streamSimpleOpenAIResponses,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 
 import type { ProviderApi, ProviderRegistration } from "./types";
 
