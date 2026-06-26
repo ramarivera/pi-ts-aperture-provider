@@ -73,6 +73,7 @@ Adjust at least:
 - `apiKey`
 - `modelsDev.providerAliases`
 - `resolution.apiRules`
+- `resolution.providerModelIdPrefixes` when an Aperture provider exposes model IDs that collide with another provider
 - `fallbackMetadata`
 - `modelOverrides`
 
@@ -91,6 +92,7 @@ This runtime resolves capabilities from multiple layers, in order:
 - API type from Aperture provider metadata such as `/v1/messages`, `/v1/responses`, or `/v1/chat/completions`
 - provider compatibility from `/aperture/config` when available
 - pricing from the Aperture `/models` payload when present
+- provider-specific Pi model ID prefixes from `resolution.providerModelIdPrefixes`
 - explicit `modelOverrides`
 - reasoning, modalities, and token limits from models.dev
 - `fallbackMetadata` from your JSON config
@@ -99,6 +101,8 @@ This runtime resolves capabilities from multiple layers, in order:
 The fallback layer is intentionally conservative. It is not freeform model-name guessing. You can edit `fallbackMetadata` in your `aperture-provider.config.json` without republishing the library, and those entries override the bundled defaults.
 
 If a model still lacks required capability metadata after those layers, the runtime warns and skips that model by default instead of crashing the entire sync. If you want strict behavior, set `resolution.skipModelsMissingCapabilities` to `false`.
+
+Use `resolution.providerModelIdPrefixes` when two Aperture backend providers expose the same bare model ID and users need to select the source explicitly. For example, `"opencode-zen-go-openai-chat": "opencode-go"` registers Pi-facing IDs such as `opencode-go/glm-5.2`, while the stream adapter still sends upstream `glm-5.2` to Aperture.
 
 Provider sync now uses a persisted registration cache. On startup it reads the cached provider registration first, returns quickly, and refreshes in the background when a cache entry exists. The default cache path is:
 

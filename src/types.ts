@@ -45,6 +45,7 @@ export type ProviderModel = {
 	contextWindow: number;
 	maxTokens: number;
 	compat?: ProviderCompat;
+	upstreamId?: string;
 };
 
 export type ProviderRegistration = {
@@ -160,6 +161,7 @@ export type ApertureProviderConfig = {
 		useKnownModelFallbacks: boolean;
 		skipModelsMissingCapabilities: boolean;
 		providerLabelInName: boolean;
+		providerModelIdPrefixes: Record<string, string>;
 		apiRules: ApiRule[];
 	};
 	fallbackMetadata: Record<string, FallbackMetadata>;

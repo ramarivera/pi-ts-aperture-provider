@@ -219,6 +219,24 @@ function providerNameLabel(provider: ApertureProviderMetadata | undefined): stri
 	return null;
 }
 
+function providerModelIdPrefix(
+	model: ApertureModel,
+	config: ApertureProviderConfig
+): string | null {
+	const providerId = model.metadata?.provider?.id?.trim();
+	if (!providerId) {
+		return null;
+	}
+
+	const prefixes = config.resolution.providerModelIdPrefixes;
+	return prefixes[providerId] ?? prefixes[normalizeValue(providerId)] ?? null;
+}
+
+function providerFacingModelId(model: ApertureModel, config: ApertureProviderConfig): string {
+	const prefix = providerModelIdPrefix(model, config);
+	return prefix ? `${prefix}/${model.id}` : model.id;
+}
+
 function findModelOverride(modelId: string, overrides: ApertureProviderConfig["modelOverrides"]) {
 	return overrides[modelId] ?? overrides[normalizeValue(modelId)];
 }
@@ -297,7 +315,7 @@ function dedupeModels(
 
 	for (const model of models) {
 		const api = resolveApiForModel(model, config, providerApiMap);
-		const key = `${api}:${model.id}`;
+		const key = `${api}:${providerFacingModelId(model, config)}`;
 		if (seen.has(key)) {
 			continue;
 		}
@@ -411,9 +429,13 @@ function toProviderModel(
 	modelsDevIndex: ModelsDevIndex | null,
 	providerApiMap: Map<string, ProviderApi>
 ): { model: ProviderModel; warnings: string[] } {
-	const override = findModelOverride(model.id, config.modelOverrides);
+	const modelId = providerFacingModelId(model, config);
+	const override =
+		findModelOverride(modelId, config.modelOverrides) ??
+		findModelOverride(model.id, config.modelOverrides);
 	const api = override?.api ?? resolveApiForModel(model, config, providerApiMap);
 	const providerLabel = providerNameLabel(model.metadata?.provider);
+	const upstreamId = modelId === model.id ? undefined : model.id;
 	const compat = override?.compat ?? inferCompat(api);
 	const enriched = enrichApertureModelMetadata(model, modelsDevIndex);
 	const fallback = config.resolution.useKnownModelFallbacks
@@ -472,12 +494,12 @@ function toProviderModel(
 
 	return {
 		model: {
-			id: model.id,
+			id: modelId,
 			name:
 				override?.name ??
 				(config.resolution.providerLabelInName && providerLabel
-					? `${model.id} (${providerLabel})`
-					: model.id),
+					? `${modelId} (${providerLabel})`
+					: modelId),
 			api,
 			reasoning: reasoning.value,
 			input: input.value,
@@ -485,6 +507,7 @@ function toProviderModel(
 			contextWindow: contextWindow.value,
 			maxTokens: maxTokens.value,
 			...(compat ? { compat } : {}),
+			...(upstreamId ? { upstreamId } : {}),
 		},
 		warnings,
 	};

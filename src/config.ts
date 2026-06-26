@@ -47,6 +47,7 @@ export const DEFAULT_CONFIG: ApertureProviderConfig = {
 		useKnownModelFallbacks: true,
 		skipModelsMissingCapabilities: true,
 		providerLabelInName: true,
+		providerModelIdPrefixes: {},
 		apiRules: [
 			{
 				match: ["/v1/messages"],
@@ -136,6 +137,10 @@ function resolveResolutionConfig(
 		skipModelsMissingCapabilities:
 			input?.skipModelsMissingCapabilities ?? defaults.skipModelsMissingCapabilities,
 		providerLabelInName: input?.providerLabelInName ?? defaults.providerLabelInName,
+		providerModelIdPrefixes: {
+			...defaults.providerModelIdPrefixes,
+			...(input?.providerModelIdPrefixes ?? {}),
+		},
 		apiRules: input?.apiRules ?? defaults.apiRules,
 	};
 }

@@ -30,6 +30,24 @@ const DEFAULT_STREAM_RESOLVER: StreamResolver = {
 	openaiResponses: streamSimpleOpenAIResponses,
 };
 
+type ModelWithOptionalUpstreamId = {
+	id?: unknown;
+	upstreamId?: unknown;
+};
+
+function withUpstreamModelId<TModel>(model: TModel): TModel {
+	const candidate = model as TModel & ModelWithOptionalUpstreamId;
+	if (typeof candidate.upstreamId !== "string" || candidate.upstreamId.trim() === "") {
+		return model;
+	}
+
+	const { upstreamId: _upstreamId, ...rest } = candidate as TModel & { upstreamId: string };
+	return {
+		...rest,
+		id: candidate.upstreamId,
+	} as TModel;
+}
+
 export function attachSessionTrackingHeaders(
 	headers: Record<string, string> | undefined,
 	sessionId: string | undefined
@@ -84,21 +102,21 @@ export function createSessionTrackedStreamSimple(
 		case "anthropic-messages":
 			return ((model, context, options) =>
 				resolveStream.anthropic(
-					model as Model<"anthropic-messages">,
+					withUpstreamModelId(model) as Model<"anthropic-messages">,
 					context,
 					withSessionTracking("anthropic-messages", options)
 				)) as PiSimpleStream;
 		case "openai-completions":
 			return ((model, context, options) =>
 				resolveStream.openaiCompletions(
-					model as Model<"openai-completions">,
+					withUpstreamModelId(model) as Model<"openai-completions">,
 					context,
 					withSessionTracking("openai-completions", options)
 				)) as PiSimpleStream;
 		case "openai-responses":
 			return ((model, context, options) =>
 				resolveStream.openaiResponses(
-					model as Model<"openai-responses">,
+					withUpstreamModelId(model) as Model<"openai-responses">,
 					context,
 					withSessionTracking("openai-responses", options)
 				)) as PiSimpleStream;

@@ -167,6 +167,134 @@ test("runtime resolves api type from provider metadata and models.dev", async ()
 	}
 });
 
+test("runtime prefixes configured provider model ids and keeps upstream ids for streaming", async () => {
+	const originalFetch = globalThis.fetch;
+
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+		if (url === "https://gateway.example/aperture/config") {
+			return new Response(
+				JSON.stringify({
+					config: `{
+						"providers": {
+							"opencode-zen-go-openai-chat": {
+								"compatibility": {
+									"openai_chat": true,
+									"anthropic_messages": false,
+									"openai_responses": false
+								}
+							},
+							"z-ai": {
+								"compatibility": {
+									"openai_chat": false,
+									"anthropic_messages": true,
+									"openai_responses": false
+								}
+							}
+						}
+					}`,
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		if (url === "https://gateway.example/v1/models") {
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: "glm-5.2",
+							metadata: {
+								provider: {
+									id: "opencode-zen-go-openai-chat",
+									name: "OpenCode Zen GO (OpenAI Chat)",
+									description: "OpenCode Go GLM exposed via /v1/chat/completions",
+								},
+							},
+						},
+						{
+							id: "glm-5.2",
+							metadata: {
+								provider: {
+									id: "z-ai",
+									name: "GLM Z.ai Coding Plan",
+									description: "GLM coding plan exposed via /v1/messages",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } }
+			);
+		}
+
+		throw new Error(`Unexpected fetch: ${url}`);
+	};
+
+	try {
+		const runtime = createApertureProviderRuntime({
+			providerName: "shared-aperture",
+			baseUrl: "https://gateway.example/v1",
+			modelsDev: {
+				enabled: false,
+			},
+			resolution: {
+				providerModelIdPrefixes: {
+					"opencode-zen-go-openai-chat": "opencode-go",
+				},
+			},
+			fallbackMetadata: {
+				"glm-5.2": {
+					reasoning: true,
+					input: ["text"],
+					contextWindow: 200000,
+					maxTokens: 131072,
+				},
+			},
+		});
+		const { registrations } = await runtime.buildRegistration();
+		const openai = registrations.find((entry) => entry.name === "shared-aperture-openai");
+		const anthropic = registrations.find((entry) => entry.name === "shared-aperture-anthropic");
+		const openCodeGlm = openai?.registration.models.find(
+			(model) => model.id === "opencode-go/glm-5.2"
+		);
+		const zaiGlm = anthropic?.registration.models.find((model) => model.id === "glm-5.2");
+
+		assert.equal(openCodeGlm?.name, "opencode-go/glm-5.2 (opencode-zen-go-openai-chat)");
+		assert.equal(openCodeGlm?.upstreamId, "glm-5.2");
+		assert.equal(zaiGlm?.name, "glm-5.2 (z-ai)");
+		assert.equal(zaiGlm?.upstreamId, undefined);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("session tracked openai stream sends upstream id for provider-prefixed model aliases", () => {
+	let receivedModel: { id?: string; upstreamId?: string } | undefined;
+
+	const streamSimple = createSessionTrackedStreamSimple("openai-completions", {
+		anthropic: () => {
+			throw new Error("unexpected anthropic stream");
+		},
+		openaiCompletions: (model) => {
+			receivedModel = model as { id?: string; upstreamId?: string };
+			return {} as never;
+		},
+		openaiResponses: () => {
+			throw new Error("unexpected openai-responses stream");
+		},
+	});
+
+	streamSimple(
+		{ id: "opencode-go/glm-5.2", upstreamId: "glm-5.2", api: "openai-completions" } as never,
+		{ messages: [] } as never,
+		undefined
+	);
+
+	assert.equal(receivedModel?.id, "glm-5.2");
+	assert.equal(receivedModel?.upstreamId, undefined);
+});
+
 test("runtime prefers aperture config compatibility over provider metadata hints", async () => {
 	const originalFetch = globalThis.fetch;
 

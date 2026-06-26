@@ -19,6 +19,9 @@
     "useKnownModelFallbacks": true,
     "skipModelsMissingCapabilities": true,
     "providerLabelInName": true,
+    "providerModelIdPrefixes": {
+      "opencode-zen-go-openai-chat": "opencode-go"
+    },
     "apiRules": [
       {
         "match": [
